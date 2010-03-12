@@ -64,57 +64,11 @@ def FindCenters(image) :
 		for y in range(image.shape[1]) :
 			pixels[image[x, y]].append((x, y))
 
-	centers = [ [] for i in range(image.max() + 1)]
-	marked = UNMARKED * numpy.ones_like(image)
-	for q in range(image.max(), -1, -1) :
-		"""
-		for p in pixels[q] :
-			if marked[p] == UNMARKED :
-				isCenter = True
-				for aCenter in centers[q] :
-					if aCenter.isNeighbor(p) :
-						aCenter.addPoint(p)
-	#			#		print q, "New Neighbor!"
-						isCenter = False
-						break
-
-				if isCenter :
-					centers[q].append(Extremum_Region([p], q))
-
-				marked[p] = 1
-		"""
-		for p in pixels[q] :
-			if marked[p] == UNMARKED :
-				isCenter = False
-				markedSoFar = []
-				for point in Neighbors(p, 2, image.shape, inclSelf = True) :
-					if marked[point] == UNMARKED :
-						marked[point] = q
-						markedSoFar.append(point)
-						isCenter = True
-					else :
-						# p touches an already marked point,
-						# so it can't be a center, but also don't
-						# want to bother with it again.
-						#marked[p] = 1
-						isCenter = False
-						break
-
-
-				if isCenter : 
-					centers[q].append(Extremum_Region(p, q))
-					marked[p] = 1
-				else :
-					# time to undo the markings
-					for aPos in markedSoFar :
-						marked[aPos] = UNMARKED
-
-#		print q, len(centers[q])
-	return centers
+	return pixels
 	
 
 
-def Watershed_Transform(image, maxDepth, saliency) :
+def Watershed_Transform(image, maxDepth) :
 
 
 	centers = FindCenters(image)
@@ -123,7 +77,7 @@ def Watershed_Transform(image, maxDepth, saliency) :
 	# Zero for background, -1 for unchecked, positive values for blob number
 	basins = UNMARKED * numpy.ones_like(image)
 	# Initializing the basin number
-	basinNumber = 1
+	basinNumber = 0
 
 	
 	globs = []
@@ -132,28 +86,51 @@ def Watershed_Transform(image, maxDepth, saliency) :
 	#print delta, len(globs)
 	for level in range(image.max(), -1, -1) :
 		# Hysterisis level.  Don't let it get below 0.
-		hlevel = max(level - maxDepth, 0)
+		#hlevel = max(level - maxDepth, 0)
 		#print level, len(centers[level]), len(deferredToNext)
 
-		centersTmp = centers[level] + deferredToNext
-		deferredToNext = []
+		#centersTmp = centers[level] + deferredToNext
+		#deferredToNext = []
 
-		foothills = []
+		markedSoFar = {}
+		clearOut = []
 
-		for centIndex, aCenter in enumerate(centersTmp) :
-			if basins[aCenter.position] == UNMARKED :
-				(basin, captured) = Capture(image, basins, aCenter, basinNumber, hlevel, saliency, foothills)
-				if not captured :
-					# Defer to next iteration to see if it will get big enough
-					centersTmp[centIndex].grey_val -= 1
-					deferredToNext.append(centersTmp[centIndex])
-				elif basin is not None :
-					globs.append(basin)
-					basinNumber += 1
+		for aPix in centers[level] :
+			connectedTo = set([basins[neighPix] for neighPix in Neighbors(aPix, 1, image.shape)])
+			connectedTo -= set([UNMARKED, GLOBBED])
+				
+			if len(connectedTo) == 0 :
+				# Doesn't touch any existing basins, must be a new basin!
+				basins[aPix] = basinNumber
+				markedSoFar[basinNumber] = [aPix]
+				basinNumber += 1
+			elif len(connectedTo) >= 1 :
+				# only touches one known basin, so let that basin grow!
+				thisBasin = connectedTo.pop()
+				basins[aPix] = thisBasin
+				markedSoFar[thisBasin].append(aPix)
+				
+				if len(connectedTo) > 1 :
+					# Ah, this isopleth is the limit for the connectedTo basins!
+					clearOut += connectedTo
 
-			
-		#print "%3d  Centers: %4d  Deferred: %3d  Globs: %4d  Foothills: %4d  " %  (level, len(centers[level]), len(deferredToNext), len(globs), len(foothills))
-		RemoveFoothills(image, basins, hlevel, centers, foothills)
+		for basinToClean in clearOut :
+			for aPix in markedSoFar[basinToClean] :
+				basins[aPix] = GLOBBED
+				
+
+#				(basin, captured) = Capture(image, basins, aCenter, basinNumber, hlevel)
+#				if not captured :
+#					# Defer to next iteration to see if it will get big enough
+#					centersTmp[centIndex].grey_val -= 1
+#					deferredToNext.append(centersTmp[centIndex])
+#				elif basin is not None :
+#					globs.append(basin)
+#					basinNumber += 1
+#
+#			
+#		#print "%3d  Centers: %4d  Deferred: %3d  Globs: %4d  Foothills: %4d  " %  (level, len(centers[level]), len(deferredToNext), len(globs), len(foothills))
+#		RemoveFoothills(image, basins, hlevel, centers, foothills)
 
 
 	return globs, basins
