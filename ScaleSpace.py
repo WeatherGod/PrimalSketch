@@ -1,4 +1,6 @@
-
+import numpy
+import Watershed as ws
+import scipy.signal
 
 
 class ScaleSpace_Blob :
@@ -42,6 +44,7 @@ class Primal_Sketch :
 
 		self.scaleBlobs_dark = []
 		self.bifurcation_dark = []
+
 
 
 
