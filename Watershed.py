@@ -2,13 +2,24 @@
 import numpy
 
 class GreyLevel_Blob :
-	def __init__(self) :
-		self.polarity = True
-		self.scale_level = None
-		self.extremum = None
-		self.saddle = None
-		self.support_region = None
+	def __init__(self, pixels = None, value = None, polarity = True, scaleLevel = None) :
+		self.polarity = polarity
+		self.scale_level = scaleLevel
 
+		if pixels is None :
+			self.extremum = None
+			self.saddle = None
+			self.support_region = None
+		else :
+			self.extremum = Extremum_Region(pixels, value, self)
+			self.saddle = None
+			self.support_region = Support_Region(pixels)
+
+	def AddSupport(self, pixels) :
+		if self.support_region is None :
+			self.support_region = Support_Region(pixels)
+		else :
+			self.support_region.AddSupport(pixels)
 
 
 class Extremum_Region :
@@ -16,13 +27,6 @@ class Extremum_Region :
 		self.position = pos
 		self.grey_val = val
 		self.grey_blob = greyblob
-
-#	def isNeighbor(self, pos) :
-#		return(min([(pos[0] - aPoint[0])**2 + (pos[1] - aPoint[1])**2
-#				for aPoint in self.positions]) <= 1.0)
-#
-#	def addPoint(self, pos) :
-#		self.positions.append(pos)
 
 class Saddle_Region :
 	def __init__(self, pos = [], val = None, greyblobs = []) :
@@ -32,12 +36,17 @@ class Saddle_Region :
 
 
 class Support_Region :
-	def __init__(self) :
-		self.blob_area = None
+	def __init__(self, pixels = []) :
 		self.first_moment = None
 		self.second_moment = None
-		self.pixels = None
+		self.pixels = pixels
 		self.atBoundary = None
+
+	def AddSupport(self, pixels) :
+		self.pixels += pixels
+
+	def blob_area(self) :
+		return(len(self.pixels) if self.pixels is not None else 0)
 
 
 UNMARKED = -1
@@ -60,53 +69,13 @@ def SortImage(image) :
 	pixels = [ [] for i in range(image.max() + 1)]
 
 	# loading the 'pixels' array with coordinates of pixels with associated values
-	for x in range(image.shape[0]) :
-		for y in range(image.shape[1]) :
-			pixels[image[x, y]].append((x, y))
+	for x, index in numpy.ndenumerate(image) :
+		pixels[image[x]].append(x)
 
+	# Order from greatest pixel values to least.
 	pixels.reverse()
 	return pixels
 
-def ConnectedComponets(pixels, imageShape) :
-	"""
-	Process the pixels of the same gray level value.  Connect the neighboring pixels
-	"""
-	components = []
-	componentID = 0
-
-	componentMarks = UNMARKED * numpy.ones(imageShape)
-
-	for aPix in pixels :
-		theNeighbors = Neighbors(aPix, 1, imageShape)
-		connectedIsos = set([componentMarks[neighPix] for neighPix in theNeighbors]) - set([UNMARKED])
-
-		
-		if len(connectedIsos) == 0 :
-			# A lonely pixel!  Start a new isopleth!
-			components.append([aPix])
-			componentmarks[aPix] = componentID
-			componentID += 1
-		else :
-			# Ah, this pixel neighbors at least one existing isopleth!
-			thisIso = connectedIsos.pop()
-
-			# If there are any other connected Isopleths, then we have
-			# a degenerate signal issue!  Therefore, we are going to have
-			# to merge these other isopleths into the first one.
-			for otherIso in connectedIsos :
-				for otherPix in components[otherIso] :
-					componentMarks[otherPix] = thisIso
-				components[thisIso] += components[otherIso]
-				components[otherIso] = None
-
-			componentMarks[aPix] = thisIso
-			components[thisIso].append(aPix)
-
-	# Squeeze out the empy isopleth entries
-	components = [aPleth for aPleth in components if aPleth is not None]
-
-	return components
-	
 
 
 def GetIsopleths(pixels, isoMarks, isoplethID) :
@@ -189,7 +158,7 @@ def MarkComponents(components, basinMarks, basinNumber, level, globs, componentM
 	for anIso in components :
 		# Ignore Globbed for the moment
 		touchHigherIsos = anIso['higherIsos']
-		pixels = anIso['pixels']
+		pixels = list(anIso['pixels'])
 		componentNum = anIso['componentID']
 
 		#print len(touchBasins), len(pixels)
@@ -204,9 +173,7 @@ def MarkComponents(components, basinMarks, basinNumber, level, globs, componentM
 			# Give it a new basin
 			basinToAssign = basinNumber
 			basinNumber += 1
-			globs.append({'componentIDs': [componentNum], 'start_level': level, 'stop_level': None})
-
-			
+			globs.append(GreyLevel_Blob(pixels, level))
 		else :
 			# There is at least one higher isopleth touching this isopleth.
 			# We need to know how many basins that represents...
@@ -222,10 +189,13 @@ def MarkComponents(components, basinMarks, basinNumber, level, globs, componentM
 					# Looking good, just need to check to see if the basin
 					# is still allowed to grow.
 					basinToAssign = basinsTouch.pop()
-					if globs[basinToAssign]['stop_level'] is not None :
+					if globs[basinToAssign].saddle is not None :
+						# This blob has stopped growing
 						basinToAssign = GLOBBED
 					else :
-						globs[basinToAssign]['componentIDs'].append(componentNum)
+						# This blob is still growing.
+						globs[basinToAssign].AddSupport(pixels)
+						
 				else :
 					# Oops, we got multiple basins!  Gotta set them all to stop growing
 					basinToAssign = GLOBBED
@@ -233,26 +203,16 @@ def MarkComponents(components, basinMarks, basinNumber, level, globs, componentM
 					
 			# This is a catch-all to make sure that the globs get stopped if they have to be
 			if basinToAssign == GLOBBED :
-				for aBasin in basinsTouch :
-					if aBasin != GLOBBED and globs[aBasin]['stop_level'] is None :
-						globs[aBasin]['stop_level'] = level
+				theGlobs = [globs[aBasin] for aBasin in basinsTouch if aBasin != GLOBBED and globs[aBasin].saddle is None]
+				newSaddle = Saddle_Region(pixels, level, theGlobs)
+				for aBlob in theGlobs :
+					aBlob.saddle = newSaddle
 
 		componentMap[componentNum] = basinToAssign
 		for aPix in pixels :
 			basinMarks[aPix] = basinToAssign
 
 	return basinNumber
-
-def ColorComponents(components, imageShape) :
-	isoImage = UNMARKED * numpy.ones(imageShape, dtype = int)
-
-	print components[0]['componentID'], components[-1]['componentID']
-
-	for anIso in components :
-		for aPix in anIso['pixels'] :
-			isoImage[aPix] = anIso['componentID']
-
-	return isoImage
 
 
 def Watershed_Transform(image) :
@@ -286,101 +246,6 @@ def Watershed_Transform(image) :
 		basinNumber = MarkComponents(components, basinMarks, basinNumber, len(pixels) - index, globs, componentMap)
 		basins.append(basinMarks.copy())
 
-
 	return globs, basins
 
-
-"""
-
-def RemoveFoothills(image, basins, hlevel, centers, foothills) :
-	for (foothill, center) in foothills :
-		while len(foothill) > 0 :
-			pixel = foothill.pop()
-			basins[pixel] = GLOBBED
-
-			# Checking the neighbors
-			for point in Neighbors(pixel, 1, image.shape) :
-				if basins[point] == UNMARKED :
-					if ( image[point] >= 0 and image[point] < hlevel
-					     and (image[point] <= image[pixel] or IsClosest(pixel, center, centers))) :
-						foothill.append(point)
-
-
-
-def IsClosest(pixel, center, centers) :
-	mydist = (pixel[0] - center.position[0])**2 + (pixel[1] - center.position[1])**2
-
-	binthresh = center.grey_val / 2
-
-	for otherBin in range(binthresh, len(centers)) :
-		#print len(centers[otherBin])
-		for otherCenter in centers[otherBin] :
-			if mydist > ((pixel[0] - otherCenter.position[0])**2 + (pixel[1] - otherCenter.position[1])**2) :
-				return False
-
-	return True
-
-
-def Capture(image, basins, center, basinNumber, hlevel, saliency, foothills) :
-	neighbors = [center.position]
-
-	foothill = []
-	markedsofar = []
-
-	willBeConsideredAgain = False
-	
-	while (len(neighbors) > 0) :
-		pixel = neighbors.pop()
-		if basins[pixel] != UNMARKED : continue	# already processed
-
-		basins[pixel] = basinNumber
-		markedsofar.append(pixel)
-
-		# Checking the neighbors
-		for point in Neighbors(pixel, 1, image.shape) :
-			if (basins[point] == UNMARKED) :
-				if (not willBeConsideredAgain 
-				    and image[point] >= 0 and image[point] < center.grey_val) :
-					willBeConsideredAgain = True
-
-				if image[point] >= hlevel :
-					neighbors.append(point)
-				elif image[point] >= 0 :
-					# Not quite large enough to be a possible neighbor
-					foothill.append(point)
-
-	if center.grey_val == 0 :
-		willBeConsideredAgain = False
-
-	bigEnough = (len(markedsofar) >= saliency)
-
-	basin = None
-	
-	if bigEnough :
-		foothills.append((foothill, center))
-		basin = GreyLevel_Blob()
-		basin.extremum = center
-		basin.support_region = Support_Region()
-		basin.support_region.pixels = markedsofar
-	elif willBeConsideredAgain :
-		# Basin has not been captured
-		# Now I need to undo what I have done...
-		for p in markedsofar :
-			basins[p] = UNMARKED
-		markedsofar = None
-		foothill = None
-		neighbors = None
-	else :
-		#print "Not being deferred!"
-		# So, it is not big enough, and it won't be considered again,
-		# Then mark them as globbed, so they won't cause confusion.
-		for p in markedsofar :
-			basins[p] = GLOBBED
-		markedsofar = None
-		foothill = None
-		neighbors = None
-
-	return (basin, (bigEnough or not willBeConsideredAgain))
-
-"""
 
