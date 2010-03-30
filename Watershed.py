@@ -24,13 +24,13 @@ class GreyLevel_Blob :
 
 class Extremum_Region :
 	def __init__(self, pos = [], val = None, greyblob = None) :
-		self.position = pos
+		self.position = set(pos)
 		self.grey_val = val
 		self.grey_blob = greyblob
 
 class Saddle_Region :
 	def __init__(self, pos = [], val = None, greyblobs = []) :
-		self.position = pos
+		self.position = set(pos)
 		self.grey_val = val
 		self.grey_blobs = greyblobs
 
@@ -39,14 +39,14 @@ class Support_Region :
 	def __init__(self, pixels = []) :
 		self.first_moment = None
 		self.second_moment = None
-		self.pixels = pixels
+		self.pixels = set(pixels)
 		self.atBoundary = None
 
 	def AddSupport(self, pixels) :
-		self.pixels += pixels
+		self.pixels.update(pixels)
 
 	def blob_area(self) :
-		return(len(self.pixels) if self.pixels is not None else 0)
+		return len(self.pixels)
 
 
 UNMARKED = -1
@@ -69,8 +69,8 @@ def SortImage(image) :
 	pixels = [ [] for i in range(image.max() + 1)]
 
 	# loading the 'pixels' array with coordinates of pixels with associated values
-	for x, index in numpy.ndenumerate(image) :
-		pixels[image[x]].append(x)
+	for index, imageVal in numpy.ndenumerate(image) :
+		pixels[imageVal].append(index)
 
 	# Order from greatest pixel values to least.
 	pixels.reverse()
@@ -158,7 +158,7 @@ def MarkComponents(components, basinMarks, basinNumber, level, globs, componentM
 	for anIso in components :
 		# Ignore Globbed for the moment
 		touchHigherIsos = anIso['higherIsos']
-		pixels = list(anIso['pixels'])
+		pixels = anIso['pixels']
 		componentNum = anIso['componentID']
 
 		#print len(touchBasins), len(pixels)
@@ -174,6 +174,7 @@ def MarkComponents(components, basinMarks, basinNumber, level, globs, componentM
 			basinToAssign = basinNumber
 			basinNumber += 1
 			globs.append(GreyLevel_Blob(pixels, level))
+			print "Iso pixel len:",  len(pixels)
 		else :
 			# There is at least one higher isopleth touching this isopleth.
 			# We need to know how many basins that represents...
