@@ -79,7 +79,7 @@ def SortImage(image) :
 
 
 def GetIsopleths(pixels, isoMarks, isoplethID) :
-	print len(pixels), isoplethID
+	#print len(pixels), isoplethID
 	curisoID = isoplethID
 	isopleths = []
 
@@ -124,7 +124,7 @@ def GetIsopleths(pixels, isoMarks, isoplethID) :
 			isopleths[thisIso - curisoID]['pixels'].append(aPix)
 			isopleths[thisIso - curisoID]['components'].update(connectedComponents)
 
-	print "Merging..."
+	#print "Merging..."
 	# Merging the components, working backwards
 	for index in range(len(isopleths) - 1, -1, -1) :
 		if componentMap[index] != isopleths[index]['componentID'] :
@@ -135,7 +135,7 @@ def GetIsopleths(pixels, isoMarks, isoplethID) :
 
 			isopleths[index] = None
 
-	print "Consolidating..."	
+	#print "Consolidating..."	
 	finalIsopleths = [isopleths[anIsoID - curisoID] for anIsoID in set(componentMap)]
 	for index, anIso in enumerate(finalIsopleths) :
 		anIso['componentID'] = index + curisoID
@@ -239,14 +239,14 @@ def Watershed_Transform(image) :
 	# Initializing the basin number
 	basinNumber = 0
 
-	basins = []
+	#basins = []
 
 	# We now process the isopleths, starting with the highest valued isopleths
 	for index, components in enumerate(isopleths) :
-		print index
+		#print index
 		basinNumber = MarkComponents(components, basinMarks, basinNumber, len(pixels) - index, globs, componentMap)
-		basins.append(basinMarks.copy())
+		#basins.append(basinMarks.copy())
 
-	return globs, basins
+	return globs, basinMarks
 
 
