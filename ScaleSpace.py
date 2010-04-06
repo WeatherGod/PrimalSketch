@@ -50,12 +50,12 @@ class Primal_Sketch :
 	def CreateSketch(self, image, scale_levels) :
 		print "Base scale"
 		greyblobs, basinMarks = ws.Watershed_Transform(image)
-		AddBlobs(greyblobs, basinMarks, 0.0)
+		self.AddBlobs(greyblobs, basinMarks, 0.0)
 
 		for aScale in scale_levels :
 			print "At level: ", aScale
 			greyblobs, basinMarks = ws.Watershed_Transform(DoConvolve(image, aScale, (4 * (aScale // 2)) + 1))
-			AddBlobs(greyblobs, basinMarks, aScale)
+			self.AddBlobs(greyblobs, basinMarks, aScale)
 
 
 

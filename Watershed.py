@@ -54,10 +54,12 @@ GLOBBED = -3
 
 def Neighbors(pos, rangeVal, shape, inclSelf = False) :
 	neighbors = []
-	for x in range(max(pos[0] - rangeVal, 0), 
-		       min(pos[0] + rangeVal + 1, shape[0])) :
-		for y in range(max(pos[1] - rangeVal, 0), 
-			       min(pos[1] + rangeVal + 1, shape[1])) :
+	startx = max(pos[0] - rangeVal, 0)
+	starty = max(pos[1] - rangeVal, 0)
+	endx = min(pos[0] + rangeVal + 1, shape[0])
+	endy = min(pos[1] + rangeVal + 1, shape[1])
+	for x in range(startx, endx) :
+		for y in range(starty, endy) :
 			if (inclSelf or x != pos[0] or y != pos[1]) :
 				neighbors.append((x, y))
 
@@ -84,32 +86,36 @@ def GetIsopleths(pixels, isoMarks, isoplethID) :
 	isopleths = []
 
 	componentMap = []
+	establishedComponents = frozenset(range(curisoID))
+	nonComponents = frozenset([UNMARKED, GLOBBED])
+	newComponents = set([])
 
 	
 	# Processing all pixels for an isolevel
 	for aPix in pixels :
-		allComps = set([isoMarks[neighPix] for neighPix in Neighbors(aPix, 1, isoMarks.shape)]) - set([UNMARKED, GLOBBED])
+		allComps = set([isoMarks[neighPix] for neighPix in Neighbors(aPix, 1, isoMarks.shape)]) - nonComponents
 
 		# Return only neighboring isopleth IDs of those isopleths in pixels
-		connectedComponents = allComps - set(range(curisoID))
+		connectedComponents = allComps - establishedComponents
 
 		# Return only neighboring isopleth IDs of higher isopleths
-		connectedHighers = allComps - set(range(curisoID, isoplethID))
+		connectedHighers = allComps - newComponents
 
 		if len(connectedComponents) == 0 :
 			# A lonely pixel!  Start a new isopleth!
-			isopleths.append({'higherIsos': set(connectedHighers), 
+			isopleths.append({'higherIsos': connectedHighers.copy(), 
 					  'pixels': [aPix],
 					  'componentID': isoplethID,
 					  'components': set([isoplethID])})
 			isoMarks[aPix] = isoplethID
 			componentMap.append(isoplethID)
+			newComponents.update([isoplethID])
 			isoplethID += 1
 		else :
-
+			# Use the component map to reduce this list.
 			connectedIsos = set([componentMap[aComponent - curisoID] for aComponent in connectedComponents])
 
-			# Ah, this pixel neighbors at least one existing isopleth!
+			# This pixel neighbors at least one existing isopleth.
 			thisIso = min(connectedIsos)
 			connectedIsos.remove(thisIso)
 
@@ -124,7 +130,7 @@ def GetIsopleths(pixels, isoMarks, isoplethID) :
 			isopleths[thisIso - curisoID]['pixels'].append(aPix)
 			isopleths[thisIso - curisoID]['components'].update(connectedComponents)
 
-	#print "Merging..."
+	print "Merging...", curisoID
 	# Merging the components, working backwards
 	for index in range(len(isopleths) - 1, -1, -1) :
 		if componentMap[index] != isopleths[index]['componentID'] :
@@ -140,7 +146,7 @@ def GetIsopleths(pixels, isoMarks, isoplethID) :
 	for index, anIso in enumerate(finalIsopleths) :
 		anIso['componentID'] = index + curisoID
 		for aPix in anIso['pixels'] :
-			isoMarks[aPix] = index + curisoID
+			isoMarks[aPix] = anIso['componentID']
 
 	return finalIsopleths, curisoID + len(finalIsopleths)
 
