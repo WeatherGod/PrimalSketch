@@ -53,17 +53,22 @@ UNMARKED = -1
 GLOBBED = -3
 
 def Neighbors(pos, rangeVal, shape, inclSelf = False) :
-	neighbors = []
+#	neighbors = []
 	startx = max(pos[0] - rangeVal, 0)
 	starty = max(pos[1] - rangeVal, 0)
 	endx = min(pos[0] + rangeVal + 1, shape[0])
 	endy = min(pos[1] + rangeVal + 1, shape[1])
-	for x in range(startx, endx) :
-		for y in range(starty, endy) :
-			if (inclSelf or x != pos[0] or y != pos[1]) :
-				neighbors.append((x, y))
+	if inclSelf :
+		return [(x, y) for x in range(startx, endx) for y in range(starty, endy)]
+	else :
+		return [(x, y) for x in range(startx, endx) for y in range(starty, endy) if (x != pos[0] or y != pos[1])]
 
-	return neighbors
+#	for x in range(startx, endx) :
+#		for y in range(starty, endy) :
+#			if (inclSelf or x != pos[0] or y != pos[1]) :
+#				neighbors.append((x, y))
+
+#	return neighbors
 
 
 def SortImage(image) :
@@ -180,7 +185,7 @@ def MarkComponents(components, basinMarks, basinNumber, level, globs, componentM
 			basinToAssign = basinNumber
 			basinNumber += 1
 			globs.append(GreyLevel_Blob(pixels, level))
-			print "Iso pixel len:",  len(pixels)
+			#print "Iso pixel len:",  len(pixels)
 		else :
 			# There is at least one higher isopleth touching this isopleth.
 			# We need to know how many basins that represents...
