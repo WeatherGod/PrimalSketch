@@ -16,12 +16,14 @@ class ScaleSpace_Blob :
 		self.grey_blobs = []
 		# This will list the support region for each scale level
 		self.support_regions = []
+		# This will list the scale value for each scale level
+		self.scale_values = []
 		
 		self.approp_scalelvl = None
 		self.approp_greyblob = None
 		self.atBoundary = None
 
-	def Add_Greylevel_Blobs(self, blobs) :
+	def Add_Greylevel_Blobs(self, blobs, scaleVal) :
 		new_support = ws.Support_Region()
 
 		for aBlob in blobs :
@@ -29,6 +31,13 @@ class ScaleSpace_Blob :
 
 		self.support_regions.append(new_support)
 		self.grey_blobs.append(blobs)
+		self.scale_values.append(scaleVal)
+
+	def Add_Greylevel_Blob(self, aBlob) :
+		# Assumes that we are adding one blob to the current level.
+		# Therefore, a level must exist first...
+		self.support_regions[-1].AddSupport(aBlob.support_region.pixels)
+		self.grey_blobs[-1].append(aBlob)
 
 
 class Bifurcation_Event :
@@ -88,37 +97,78 @@ class Primal_Sketch :
 		return scipy.signal.sepfir2d(image, kernel / kernel.sum(),
 						    kernel / kernel.sum())
 
-	def Add_GreyLevel_Blobs(self, greyblobs, image, scaleVal) :
+	def AddBlobs(self, greyblobs, image, scaleVal) :
 		# Right now, assume that the scale size is increasing monotonically.
 		self.scale_levels.append(Scale_Level(greyblobs, image, scaleVal))
 
-		# Map of greys to scales
-		greyMap = [None] * len(greyblobs)
-		# Map of scales to greys
-		scaleMap = [None] * len(self.scaleBlobs_bright)
+	def Create_ScaleSpace_Blobs(self) :
+		# Skip out early if there is nothing to process
+		if len(self.scale_levels) == 0 : return
 
-		# Oops, I need to make sure I only grab scale blobs that are in the previous level,
-		#	I should skip all of the extinct scale blobs.
-		for greyIndex, aGreyBlob in enumerate(greyblobs) :
-			for blobIndex, aScaleBlob in enumerate(self.scaleBlobs_bright) :
-				# The scalespace blob should be created with at least one level of data.
-				# so accessing the last element of the support_regions list should be ok.
-				sharedPixs = aGreyBlob.support_region.pixels.intersection(aScaleBlob.support_regions[-1].pixels)
+		# Contains a list of the active scale space blobs
+		# This gets modified at each scale level
+		active_scale_blobs = []
 
-				if len(sharedPixs) > 0 : 
-					greyMap[greyIndex] = blobIndex
-					scaleMap[blobIndex] = greyIndex
-
-		# So, whichever entries in greyMap has "None", then we have a creation event
-		#     whichever entries in scaleMap has "None", then we have an extinction event
-
-		# For each unique entry in greyMap we have a continuation event
-		#     This should correspond to some unique entries in scaleMap.
-
-		# For non-unique entries in greyMap, we have a scale blob associated with multiple grey blobs
-		# For non-unique entries in scaleMap, we have a grey blob associated with multiple scale blobs
-
+		# We are going to loop through the levels (starting at the level
+		#    that will likely have the fewest greylevel blobs).
+		# We will loop through these levels with "atLevel".
+		for atLevel in reversed(self.scale_levels) :
 			
+			# Map of grey blobs to scale blobs
+			greyMap = [None] * len(atLevel.greyBlobs)
+			# Map of scale blobs to grey blobs
+			scaleMap = [None] * len(active_scale_blobs)
+
+			for greyIndex, aGreyBlob in enumerate(atLevel.greyBlobs) :
+				for blobIndex, aScaleBlob in enumerate(active_scale_blobs) :
+					# The scalespace blob should be created with at least one level of data.
+					# so accessing the last element of the support_regions list should be ok.
+					sharedPixs = aGreyBlob.support_region.pixels.intersection(aScaleBlob.support_regions[-1].pixels)
+
+					if len(sharedPixs) > 0 : 
+						greyMap[greyIndex] = blobIndex
+						scaleMap[blobIndex] = greyIndex
+
+
+			# So, whichever entries in greyMap has "None", then we have a creation event
+			# So, whichever entries in scaleMap has "None", then we have an extinction event
+		
+			# For each unique entry in greyMap we have a continuation event
+			#     This should correspond to some unique entries in scaleMap.
+
+			# For non-unique entries in greyMap, we have a scale blob associated with multiple grey blobs
+			# For non-unique entries in scaleMap, we have a grey blob associated with multiple scale blobs
+
+			# TODO: Much more work is needed, including the addition and utilization of bifurcation events
+			#       Also need to include the merging of scale space blobs
+
+			newLevelAdded = [False] * len(active_scale_blobs)
+			for greyIndex, scaleBlobIndex in enumerate(greyMap) :
+				if scaleBlobIndex is not None :
+					if newLevelAdded[scaleBlobIndex] :
+						active_scale_blobs[scaleBlobIndex].Add_Greylevel_Blob(atLevel.greyBlobs[greyIndex])
+					else :
+						active_scale_blobs[scaleBlobIndex].Add_Greylevel_Blobs([atLevel.greyBlobs[greyIndex]], atLevel.scaleVal)
+						newLevelAdded[scaleBlobIndex] = True
+					
+
+			# NOTE: These two actions are done last because they modify the active_scale_blobs list
+			for scaleBlobIndex in range(len(scaleMap) - 1, -1, -1) :
+				if scaleMap[scaleBlobIndex] is None :
+					# We have an extinction event!  Remove from the active list
+					# TODO: Probably should modify the scaleblob a bit before eliminating it...
+					del active_scale_blobs[scaleBlobIndex]
+
+
+			for greyIndex, scaleBlobIndex in enumerate(greyMap) :
+				if scaleBlobIndex is None :
+					# We have a creation of a new scale space blob!
+					new_blob = ScaleSpace_Blob()
+					new_blob.Add_Greylevel_Blobs([atLevel.greyBlobs[greyIndex]], atLevel.scaleVal)
+					active_scale_blobs.append(new_blob)
+					self.scaleBlobs_bright.append(new_blob)
+			
+
 			
 
 
