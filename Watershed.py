@@ -5,6 +5,7 @@ class GreyLevel_Blob :
 	def __init__(self, pixels = None, value = None, polarity = True, scaleLevel = None) :
 		self.polarity = polarity
 		self.scale_level = scaleLevel
+		self.scalespace_blob = None
 
 		if pixels is None :
 			self.extremum = None
@@ -54,14 +55,15 @@ GLOBBED = -3
 
 def Neighbors(pos, rangeVal, shape, inclSelf = False) :
 #	neighbors = []
-	startx = max(pos[0] - rangeVal, 0)
-	starty = max(pos[1] - rangeVal, 0)
-	endx = min(pos[0] + rangeVal + 1, shape[0])
-	endy = min(pos[1] + rangeVal + 1, shape[1])
-	if inclSelf :
-		return [(x, y) for x in range(startx, endx) for y in range(starty, endy)]
+	startx = pos[1] - rangeVal if (pos[1] - rangeVal) > 0 else 0
+	starty = pos[0] - rangeVal if (pos[0] - rangeVal) > 0 else 0
+	endx = pos[1] + rangeVal + 1 if (pos[1] + rangeVal + 1) < shape[1] else shape[1]
+	endy = pos[0] + rangeVal + 1 if (pos[0] + rangeVal + 1) < shape[0] else shape[0]
+	if not inclSelf :
+		return [(y, x) for x in range(startx, endx) for y in range(starty, endy) if (y != pos[0] or x != pos[1])]
 	else :
-		return [(x, y) for x in range(startx, endx) for y in range(starty, endy) if (x != pos[0] or y != pos[1])]
+		return [(y, x) for x in range(startx, endx) for y in range(starty, endy)]
+
 
 #	for x in range(startx, endx) :
 #		for y in range(starty, endy) :
@@ -76,8 +78,14 @@ def SortImage(image) :
 	pixels = [ [] for i in range(image.max() + 1)]
 
 	# loading the 'pixels' array with coordinates of pixels with associated values
-	for index, imageVal in numpy.ndenumerate(image) :
-		pixels[imageVal].append(index)
+	#for index, imageVal in numpy.ndenumerate(image) :
+	#	pixels[imageVal].append(index)
+	xIndices = range(image.shape[1])
+	yIndices = range(image.shape[0])
+
+	for y in yIndices :
+		for x in xIndices :
+			pixels[image[y, x]].append((y, x))
 
 	# Order from greatest pixel values to least.
 	pixels.reverse()
