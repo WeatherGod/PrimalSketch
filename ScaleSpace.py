@@ -6,11 +6,12 @@ import scipy.signal		# for sepfir2d() and gaussian()
 
 
 class ScaleSpace_Blob :
-	def __init__(self, scale_level) :
+	def __init__(self, scale_level, idNum) :
 		self.isBright = None
 		self.signifVal = None
 		self.appearance = scale_level
 		self.disappearance = None
+		self.id_num = idNum
 
 		# This will list grey blobs for scale each level.
 		self.grey_blobs = [ [] ]
@@ -61,6 +62,7 @@ class Scale_Level :
 #		self.greyBlobs_dark = []
 #		self.coarserLevel = coarserLevel
 #		self.finerLevel = finerLevel
+		#self.greyMap = [None] * len(greyBlobs)
 
 
 
@@ -73,21 +75,33 @@ class Primal_Sketch :
 
 		self.scaleBlobs_dark = []
 		self.bifurcation_dark = []
+		#self.grey2scale_maps = []
+
+		self.scaleBlob_Marks = []
+		self.UNMARKED = -1
+
 
 
 	def CreateSketch(self, image, scale_values) :
-		if (len(self.scale_levels) == 0) :
-			# No sketch exists, so start with the base 
-			print "Base scale"
-			greyblobs, basinMarks = ws.Watershed_Transform(image)
-			self.AddBlobs(greyblobs, basinMarks, 0.0)
+		#if (len(self.scale_levels) == 0) :
+		#	# No sketch exists, so start with the base 
+		#	print "Base scale"
+		#
+		#	greyblobs, basinMarks = ws.Watershed_Transform(image)
+		#	self.AddBlobs(greyblobs, basinMarks, 0.0)
 		
 
 		for aScale in scale_values :
-			newImage = self.DoConvolve(image, aScale, (4 * (aScale // 2)) + 3).astype(int)
+			if aScale == 0 :
+				newImage = image
+			else :
+				newImage = self.DoConvolve(image, aScale, (4 * (aScale // 2)) + 3).astype(int)
+
 			print "At level: ", aScale #, "  Image max:", newImage.max(), "   Image min:", newImage.min()
+			
 			greyblobs, basinMarks = ws.Watershed_Transform(newImage)
 			self.AddBlobs(greyblobs, basinMarks, aScale)
+			self.Create_ScaleSpace_Blobs()
 
 
 
@@ -104,72 +118,70 @@ class Primal_Sketch :
 	def AddBlobs(self, greyblobs, image, scaleVal) :
 		# Right now, assume that the scale size is increasing monotonically.
 		self.scale_levels.append(Scale_Level(greyblobs, image, scaleVal))
+		self.scaleBlob_Marks.append( numpy.zeros(image.shape) + self.UNMARKED )
+		
 
 	def Create_ScaleSpace_Blobs(self) :
 		# Skip out early if there is nothing to process
 		if len(self.scale_levels) == 0 : return
 
-		# Contains a list of the active scale space blobs
-		# This gets modified at each scale level
-		active_scale_blobs = []
+		currIDNum = len(self.scaleBlobs_bright)
 
-		# We are going to loop through the levels (starting at the level
-		#    that will likely have the fewest greylevel blobs).
-		# We will loop through these levels with "atLevel".
-		for atLevel in reversed(self.scale_levels) :
-			
-			# Map of grey blobs to scale blobs
-			greyMap = [None] * len(atLevel.greyBlobs)
-			# Map of scale blobs to grey blobs
-			scaleMap = [None] * len(active_scale_blobs)
-
-			for greyIndex, aGreyBlob in enumerate(atLevel.greyBlobs) :
-				for blobIndex, aScaleBlob in enumerate(active_scale_blobs) :
-					# The scalespace blob should be created with at least one level of data.
-					# so accessing the last element of the support_regions list should be ok.
-					sharedPixs = aGreyBlob.support_region.pixels.intersection(aScaleBlob.support_regions[-1].pixels)
-
-					if len(sharedPixs) > 0 : 
-						greyMap[greyIndex] = blobIndex
-						scaleMap[blobIndex] = greyIndex
-
-
-			# So, whichever entries in greyMap has "None", then we have a creation event
-			#     whichever entries in scaleMap has "None", then we have an extinction event
+		atLevel = self.scale_levels[-1]
 		
-			# For each unique entry in greyMap we have a continuation event
-			#     This should correspond to some unique entries in scaleMap.
+		if len(self.scale_levels) > 1 :
+			previousBlobMarks = self.scaleBlob_Marks[-2]
+		else :
+			previousBlobMarks = numpy.zeros(atLevel.image.shape) + self.UNMARKED
+		
+		ignoreThese = frozenset([self.UNMARKED])
+		scaleBlobsMatched = set([])
 
-			# For non-unique entries in greyMap, we have a scale blob associated with multiple grey blobs
-			# For non-unique entries in scaleMap, we have a grey blob associated with multiple scale blobs
+		for greyIndex, aGreyBlob in enumerate(atLevel.greyBlobs) :
+			blobIndices = set([previousBlobMarks[anIndex] for anIndex in aGreyBlob.support_region.pixels]) - ignoreThese
 
-			# TODO: Much more work is needed, including the addition and utilization of bifurcation events
-			#       Also need to include the merging of scale space blobs
+			# So, if len(blobIndices) is zero, then we have a new scalespace blob!
+			#     if len(blobIndices) is one, then we have a continuation,
+			#     if len(blobIndices) is greater than one, we have a bifurcation event.
 
-			newLevelAdded = [False] * len(active_scale_blobs)
-			for greyIndex, scaleBlobIndex in enumerate(greyMap) :
-				if scaleBlobIndex is not None :
-					if newLevelAdded[scaleBlobIndex] :
-						active_scale_blobs[scaleBlobIndex].Add_Greylevel_Blob(atLevel.greyBlobs[greyIndex])
-					else :
-						active_scale_blobs[scaleBlobIndex].Add_Greylevel_Blobs([atLevel.greyBlobs[greyIndex]], atLevel)
-						newLevelAdded[scaleBlobIndex] = True
-					
+			if len(blobIndices) == 0 :
 
-			# NOTE: These two actions are done last because they modify the active_scale_blobs list
-			for scaleBlobIndex in range(len(scaleMap) - 1, -1, -1) :
-				if scaleMap[scaleBlobIndex] is None :
-					# We have an extinction event!
-					active_scale_blobs[scaleBlobIndex].disappearance = atLevel
-					# Remove from the active list
-					del active_scale_blobs[scaleBlobIndex]
+				for anIndex in aGreyBlob.support_region.pixels :
+					self.scaleBlob_Marks[-1][anIndex] = currIDNum
+
+				new_blob = ScaleSpace_Blob(atLevel, currIDNum)
+				currIDNum += 1
+				new_blob.Add_Greylevel_Blob(aGreyBlob)
+				self.scaleBlobs_bright.append(new_blob)
+
+			elif len(blobIndices) == 1 :
+				blobIndex = list(blobIndices)[0]
+				print blobIndex
+				for anIndex in aGreyBlob.support_region.pixels :
+					self.scaleBlob_Marks[-1][anIndex] = blobIndex
+
+				if blobIndex in scaleBlobsMatched :
+					self.scaleBlobs_bright[blobIndex].Add_GreyLevel_Blob(aGreyBlob)
+				else :
+					self.scaleBlobs_bright[blobIndex].Add_GreyLevel_Blobs([aGreyBlob], atLevel)
+					scaleBlobsMatched.update([blobIndex])
+
+			else :
+				# TODO: Figure out what to do here...
+				print "Grrr... a bad component labeling issue.  Just pick the first one and go with it."
+				blobIndex = list(blobIndices)[0]
+				for anIndex in aGreyBlob.support_region.pixels :
+					self.scaleBlob_Marks[-1][anIndex] = blobIndex
+
+                                if blobIndex in scaleBlobsMatched :
+                                        self.scaleBlobs_bright[blobIndex].Add_GreyLevel_Blob(aGreyBlob)
+                                else :
+                                        self.scaleBlobs_bright[blobIndex].Add_GreyLevel_Blobs([aGreyBlob], atLevel)
+                                        scaleBlobsMatched.update([blobIndex])
 
 
-			for greyIndex, scaleBlobIndex in enumerate(greyMap) :
-				if scaleBlobIndex is None :
-					# We have a creation of a new scale space blob!
-					new_blob = ScaleSpace_Blob(atLevel)
-					new_blob.Add_Greylevel_Blob(atLevel.greyBlobs[greyIndex])
-					active_scale_blobs.append(new_blob)
-					self.scaleBlobs_bright.append(new_blob)
+		# Any scale blobs from the previous run that are unmatched needs to be discontinued.
+		unmatchedBlobs = set(previousBlobMarks.flat) - scaleBlobsMatched - ignoreThese
+		for blobIndex in unmatchedBlobs :
+			self.scaleBlobs_bright[blobIndex].disappearance = atLevel
 			
