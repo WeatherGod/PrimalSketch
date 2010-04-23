@@ -5,6 +5,7 @@ import ScaleSpace as ss
 import numpy
 
 import pylab
+import matplotlib.collections as mcolls
 import mpl_toolkits.mplot3d.axes3d as p3
 
 scales = [1, 5, 11, 21, 41]
@@ -57,7 +58,8 @@ def Blob2Coords(blob) :
         return x, y, z
 		
 def testwork(blob) :
-	pylab.figure()
+	fig = pylab.figure()
+	ax = fig.gca()
 	x, y, z = Blob2Coords(blob)
 
 	levelVal = max(z)
@@ -68,7 +70,8 @@ def testwork(blob) :
 	print x1.shape, y1.shape, levelVal
 
 	X, Y = numpy.meshgrid(range(min(x1), max(x1) + 2), range(min(y1), max(y1) + 2))
-	C = numpy.empty((X.shape[0] - 1, X.shape[1] - 1)).fill(numpy.nan)
+	C = numpy.empty((X.shape[0] - 1, X.shape[1] - 1))
+	C.fill(numpy.nan)
 	C[y1 - y1.min(), x1 - x1.min()] = levelVal
 
 	X = numpy.ma.asarray(X)
@@ -90,7 +93,7 @@ def testwork(blob) :
         Y4 = numpy.compress(ravelmask, numpy.ma.filled(Y[0:-1,1:]).ravel())
         npoly = len(X1)
 
-	xy = np.concatenate((X1[:,numpy.newaxis], Y1[:,numpy.newaxis],
+	xy = numpy.concatenate((X1[:,numpy.newaxis], Y1[:,numpy.newaxis],
                              X2[:,numpy.newaxis], Y2[:,numpy.newaxis],
                              X3[:,numpy.newaxis], Y3[:,numpy.newaxis],
                              X4[:,numpy.newaxis], Y4[:,numpy.newaxis],
@@ -100,17 +103,19 @@ def testwork(blob) :
 	verts = xy.reshape((npoly, 5, 2))
 	C = numpy.compress(ravelmask, numpy.ma.filled(C[0:Ny-1, 0:Nx-1]).ravel())
 
-	collection = pylab.collections.PolyCollection(verts, {'edgecolors': (0, 0, 0, 1), 'antialiaseds': (0,), 'linewidths': (0.25,)})
-	collection.set_alpha(1.0)
-	collection.set_array(C)
-	collection.set_cmap(None)
-	collection.set_norm(None)
-	collection.set_clim(levelVal - 1, levelVal + 1)
+	collection = mcolls.PolyCollection(verts)
+	collection.set_color('r')
+	#collection.set_alpha(1.0)
+	#collection.set_array(C)
+	#collection.set_cmap(None)
+	#collection.set_norm(None)
+	#collection.set_clim(levelVal - 1.0, levelVal + 1.0)
 
-	pylab.grid(False)
-	corners = (x1.min(), y1.min()), (x1.max(), y1.max())
-	pylab.update_datalim(corners)
-	pylab.autoscale_view()
-	pylab.add_collection(collection)
+	#ax.grid(False)
+	#corners = (x1.min(), y1.min()), (x1.max(), y1.max())
+	ax.set_xlim((x1.min(), x1.max()))
+	ax.set_ylim((y1.min(), y1.max()))
+	#ax.autoscale_view()
+	ax.add_collection(collection)
 
 	pylab.show()

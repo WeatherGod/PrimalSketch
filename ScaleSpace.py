@@ -42,7 +42,6 @@ class ScaleSpace_Blob :
 		self.grey_blobs[-1].append(aBlob)
 
 
-class 
 
 
 class Bifurcation_Event :
