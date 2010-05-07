@@ -10,7 +10,7 @@ import matplotlib.axes
 import mpl_toolkits.mplot3d.axes3d as p3
 import mpl_toolkits.mplot3d.art3d as art3d
 
-scales = [41, 21, 11, 5, 1, 0]
+scales = [41, 21, 5]#, 11, 5, 1, 0]
 
 def foo(ps) :
 	radarData = LoadRastRadar("6500KTLX20050514_052255.nc")

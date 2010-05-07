@@ -2,52 +2,50 @@
 import numpy
 
 class GreyLevel_Blob :
-	def __init__(self, pixels = None, value = None, polarity = True, scaleLevel = None) :
+	def __init__(self, pixels, value, polarity = True) :
 		self.polarity = polarity
-		self.scale_level = scaleLevel
-		self.scalespace_blob = None
+		#self.scale_level = scaleLevel
+		#self.scalespace_blob = None
 
-		if pixels is None :
-			self.extremum = None
-			self.saddle = None
-			self.support_region = None
-		else :
-			self.extremum = Extremum_Region(pixels, value, self)
-			self.saddle = None
-			self.support_region = Support_Region(pixels)
+		self.extremum = Extremum_Region(pixels, value, self)
+		self.saddle = None
+		self.support_region = Support_Region(pixels)
 
 	def AddSupport(self, pixels) :
-		if self.support_region is None :
-			self.support_region = Support_Region(pixels)
-		else :
-			self.support_region.AddSupport(pixels)
+		self.support_region.AddSupport(pixels)
 
 
-class Extremum_Region :
+class Extremum_Region(Support_Region) :
 	def __init__(self, pos = [], val = None, greyblob = None) :
-		self.position = set(pos)
 		self.grey_val = val
 		self.grey_blob = greyblob
+		set.__init__(self, pos)
 
-class Saddle_Region :
+class Saddle_Region(Support_Region) :
 	def __init__(self, pos = [], val = None, greyblobs = []) :
-		self.position = set(pos)
 		self.grey_val = val
 		self.grey_blobs = greyblobs
+		set.__init__(self, pos)
 
 
-class Support_Region :
+class Support_Region(set) :
 	def __init__(self, pixels = []) :
-		self.first_moment = None
-		self.second_moment = None
-		self.pixels = set(pixels)
+#		self.first_moment = None
+#		self.second_moment = None
 		self.atBoundary = None
+		set.__init__(self, pixels)
 
 	def AddSupport(self, pixels) :
-		self.pixels.update(pixels)
+		self.update(pixels)
 
 	def blob_area(self) :
-		return len(self.pixels)
+		return len(self)
+
+	def first_moment(self) :
+		return list(numpy.average(list(self), axis=0))
+
+	def second_moment(self) :
+		return list(numpy.std(list(self), axis=0))
 
 
 UNMARKED = -1
@@ -83,6 +81,7 @@ def SortImage(image) :
 	xIndices = range(image.shape[1])
 	yIndices = range(image.shape[0])
 
+	# Oddly enough, going through the indices is faster than using ndenumerate()
 	for y in yIndices :
 		for x in xIndices :
 			pixels[image[y, x]].append((y, x))
