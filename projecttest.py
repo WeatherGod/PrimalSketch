@@ -25,6 +25,10 @@ def foo(ps) :
 
 	ps.CreateSketch(imageData, scales)
 
+def Plot_ScaleBlob(ax, scaleBlob) :
+        x, y, z = Blob2Coords(scaleBlob)
+	ax.scatter(x, y, c=z, marker='s', s = 1, edgecolors='none')
+
 def Make_ScaleSpace_Plot(ps) :
 	someColors = ['r', 'g', 'm', 'b', 'c', 'k']
 	X, Y = numpy.meshgrid(numpy.arange(1200), numpy.arange(925))
@@ -64,7 +68,7 @@ def Blob2Coords(blob) :
         z = []
 
 	for aRegion, scale_lev in zip(blob.support_regions, blob.scale_levels) :
-                ytemp, xtemp = zip(*list(aRegion.pixels))
+                ytemp, xtemp = zip(*list(aRegion))
                 x += xtemp
                 y += ytemp
                 z += [scale_lev.scaleVal] * len(xtemp)

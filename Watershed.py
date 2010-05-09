@@ -15,17 +15,7 @@ class GreyLevel_Blob :
 		self.support_region.AddSupport(pixels)
 
 
-class Extremum_Region(Support_Region) :
-	def __init__(self, pos = [], val = None, greyblob = None) :
-		self.grey_val = val
-		self.grey_blob = greyblob
-		set.__init__(self, pos)
 
-class Saddle_Region(Support_Region) :
-	def __init__(self, pos = [], val = None, greyblobs = []) :
-		self.grey_val = val
-		self.grey_blobs = greyblobs
-		set.__init__(self, pos)
 
 
 class Support_Region(set) :
@@ -47,6 +37,17 @@ class Support_Region(set) :
 	def second_moment(self) :
 		return list(numpy.std(list(self), axis=0))
 
+class Extremum_Region(Support_Region) :
+	def __init__(self, pos = [], val = None, greyblob = None) :
+		self.grey_val = val
+		self.grey_blob = greyblob
+		set.__init__(self, pos)
+
+class Saddle_Region(Support_Region) :
+	def __init__(self, pos = [], val = None, greyblobs = []) :
+		self.grey_val = val
+		self.grey_blobs = greyblobs
+		set.__init__(self, pos)
 
 UNMARKED = -1
 GLOBBED = -3
