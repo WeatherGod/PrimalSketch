@@ -5,12 +5,16 @@ import ScaleSpace as ss
 import numpy
 
 import pylab
+
+import matplotlib.cm
+import matplotlib.colors
+
 import matplotlib.collections as mcolls
 import matplotlib.axes
 import mpl_toolkits.mplot3d.axes3d as p3
 import mpl_toolkits.mplot3d.art3d as art3d
 
-scales = [41, 21, 5]#, 11, 5, 1, 0]
+scales = [41, 30, 21, 13, 5, 1, 0]#, 11, 5, 1, 0]
 
 def foo(ps) :
 	radarData = LoadRastRadar("6500KTLX20050514_052255.nc")
@@ -25,9 +29,11 @@ def foo(ps) :
 
 	ps.CreateSketch(imageData, scales)
 
+#blobnorm = matplotlib.colors.BoundaryNorm([0, 5, 21, 41], 9)
+
 def Plot_ScaleBlob(ax, scaleBlob) :
         x, y, z = Blob2Coords(scaleBlob)
-	ax.scatter(x, y, c=z, marker='s', s = 1, edgecolors='none')
+	ax.scatter(x, y, c=z, marker='s', s = 2, edgecolors='none', alpha = 0.25, vmin=0, vmax=41)
 
 def Make_ScaleSpace_Plot(ps) :
 	someColors = ['r', 'g', 'm', 'b', 'c', 'k']

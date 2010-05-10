@@ -13,13 +13,13 @@ class ScaleSpace_Blob :
 		self.disappearance = None
 		self.id_num = idNum
 
-		# This will list grey blobs for scale each level.
+		# This will list the grey blob for scale each level.
 		self.grey_blobs = []
 		# This will list the support region for each scale level
 		self.support_regions = []
-		# This will list the scale value for each scale level
+		# This will list the Scale_Level for each scale level
 		self.scale_levels = []
-		# This will list the bifurcations events for each scale level
+		# This will list the scale event for each scale level
 		self.events = []
 
 		self.approp_scalelvl = None
@@ -27,47 +27,49 @@ class ScaleSpace_Blob :
 		self.atBoundary = None
 
 
-	def Start_ScaleBlob(self, greyBlob, scale_level) :
-		self.appearance = scale_level
+	def Start_ScaleBlob(self, greyBlob, scaleLevel) :
+		greyBlob.scaleBlob = self
+
+		self.appearance = scaleLevel
+		self.disappearance = scaleLevel
 		self.grey_blobs.append(greyBlob)
-		self.support_regions.append(ws.Support_Region(greyBlob.support_region))
-		self.scale_levels.append(scale_level)
+		self.support_regions.append(greyBlob.support_region)
+		self.scale_levels.append(scaleLevel)
 
 		newEvent = Scale_Event(Scale_Event.CREATION,
                                        [], [self],
-                                       self.support_regions[-1].first_moment(),
-                                       self.scale_levels[-1])
-		self.events.append( [newEvent] )
-
+                                       greyBlob.support_region.first_moment(),
+                                       scaleLevel)
+		self.events.append(newEvent)
 		return newEvent
 
 	def End_ScaleBlob(self) :
-		self.disappearance = self.scale_levels[-1]
 		endEvent = Scale_Event(Scale_Event.DESTRUCTION,
 				       [self], [],
 				       self.support_regions[-1].first_moment(),
 				       self.scale_levels[-1])
-		self.events.append( [endEvent] )
-
+		self.events.append(endEvent)
 		return endEvent
 
 	def Continue_ScaleBlob(self, greyBlob, scaleLevel) :
-		self.support_regions.append(ws.Support_Region(greyBlob.support_region))
+		greyBlob.scaleBlob = self
+		self.disappearance = scaleLevel
+		self.support_regions.append(greyBlob.support_region)
 		self.grey_blobs.append(greyBlob)
 		self.scale_levels.append(scaleLevel)
 
-	def Split_ScaleBlob(self, greyBlob) :
-		# So, we split a scale blob by updating the last event in the events list
-		# Note that this function assumes that in order to know that a split has
-		#      occurred, that the scale blob has already been "continued", and that
-		#      the splits are being discovered one grey blob at a time.
-		self.support_regions[-1].AddSupport(greyBlob.support_region)
-		self.grey_blobs[-1].append(greyBlob)
-		
-		self.events[-1][-1].event_type = Scale_Event.SPLIT
-		self.events[-1][-1].position = self.support_regions[-1].first_moment()
-
-		return self.events[-1][-1]
+#	def Split_ScaleBlob(self, greyBlob) :
+#		# So, we split a scale blob by updating the last event in the events list
+#		# Note that this function assumes that in order to know that a split has
+#		#      occurred, that the scale blob has already been "continued", and that
+#		#      the splits are being discovered one grey blob at a time.
+#		self.support_regions[-1].AddSupport(greyBlob.support_region)
+#		self.grey_blobs[-1].append(greyBlob)
+#		
+#		self.events[-1][-1].event_type = Scale_Event.SPLIT
+#		self.events[-1][-1].position = self.support_regions[-1].first_moment()
+#
+#		return self.events[-1][-1]
 
 #	def Merge_ScaleBlob(self, greyBlob, scaleBlobs, scaleLevel) :
 #
@@ -78,23 +80,23 @@ class ScaleSpace_Blob :
 #		return self.events[-1][-1]
 		
 
-	def Add_Greylevel_Blobs(self, blobs, scale_lev) :
-		new_support = ws.Support_Region()
-
-		for aBlob in blobs :
-			aBlob.scalespace_blob = self
-			new_support.AddSupport(aBlob.support_region)
-
-		self.support_regions.append(new_support)
-		self.grey_blobs.append(blobs)
-		self.scale_levels.append(scale_lev)
-
-	def Add_Greylevel_Blob(self, aBlob) :
-		# Assumes that we are adding one blob to the current level.
-		# Therefore, a level must exist first...
-		aBlob.scalespace_blob = self
-		self.support_regions[-1].AddSupport(aBlob.support_region)
-		self.grey_blobs[-1].append(aBlob)
+#	def Add_Greylevel_Blobs(self, blobs, scale_lev) :
+#		new_support = ws.Support_Region()
+#
+#		for aBlob in blobs :
+#			aBlob.scalespace_blob = self
+#			new_support.AddSupport(aBlob.support_region)
+#
+#		self.support_regions.append(new_support)
+#		self.grey_blobs.append(blobs)
+#		self.scale_levels.append(scale_lev)
+#
+#	def Add_Greylevel_Blob(self, aBlob) :
+#		# Assumes that we are adding one blob to the current level.
+#		# Therefore, a level must exist first...
+#		aBlob.scalespace_blob = self
+#		self.support_regions[-1].AddSupport(aBlob.support_region)
+#		self.grey_blobs[-1].append(aBlob)
 
 
 
@@ -114,50 +116,111 @@ class Scale_Event :
 
 
 
+UNMARKED = -1
 
 class Scale_Level :
 	def __init__(self, greyBlobs, image, greyMarks, scaleVal) :
 		self.scaleVal = scaleVal
 		self.image = image
-		self.greyMarks = greyMarks
+
+		if greyMarks is None :
+			self.greyMarks = numpy.empty(image.shape, dtype=int)
+			self.greyMarks.fill(UNMARKED)
+		else :
+			self.greyMarks = greyMarks
+
 		self.greyBlobs = greyBlobs
+		self.scaleMarks = numpy.empty(image.shape, dtype=int)
+		self.scaleMarks.fill(UNMARKED)
+
+
+
+def Mark_ScaleBlob(aGreyBlob, scaleBlob_Label, idNum) :
+	for anIndex in aGreyBlob.support_region :
+		scaleBlob_Label[anIndex] = idNum
+
 
 
 
 class Primal_Sketch :
-	UNMARKED = -1
+
 
 	def __init__(self) :
-		self.scale_levels = []
+		self.scale_levels = {}
 
 		self.scaleBlobs_bright = []
 		self.events_bright = []
 
-		self.scaleBlob_Marks = []
+		self.currIDNum = 0
 
 
 
 
-	def CreateSketch(self, image, scale_values) :
-		prevScaleMarks = numpy.empty(image.shape, dtype=int)
-		prevScaleMarks.fill(self.UNMARKED)
+	def CreateSketch(self, image, scale_values, refinementLimit = 5) :
+		if len(scale_values) == 0 :
+			print "No scales given!"
+			return
 
-		for aScale in scale_values :
-			if aScale == 0 :
-				newImage = image.copy()
-			else :
-				newImage = self.DoConvolve(image, aScale, (4 * (aScale // 2)) + 3).astype(int)
+		# Makes sure that the values are sorted from greatest to least.
+		scale_values.sort()
+		scale_values.reverse()
 
-			print "At level: ", aScale #, "  Image max:", newImage.max(), "   Image min:", newImage.min()
+
+		# Dummy scale level for priming the pump purposes.
+		prevScale = Scale_Level([], image, None, scale_values[-1])
+
+		refinementCnt = 0
+		isForced = False		# Used to force linkage and prevent scale refinement in certain situations.
+		
+
+		# NOTE: scale_values may get dynamically updated within the loop as refinement occurs.
+		while len(scale_values) > 0 :
+			aScale = scale_values.pop()
+
+			# This if statement allows for use of caching during the scale refinement process.
+			if aScale not in self.scale_levels :
+				if aScale == 0 :
+					newImage = image.copy()
+				else :
+					newImage = self.DoConvolve(image, aScale, (4 * (aScale // 2)) + 3).astype(int)
+
+				print "At level: ", aScale #, "  Image max:", newImage.max(), "   Image min:", newImage.min()
 			
-			greyblobs, greyMarks = ws.Watershed_Transform(newImage)
+				greyblobs, greyMarks = ws.Watershed_Transform(newImage)
+				newScale = Scale_Level(greyblobs, image, greyMarks, aScale)
+				self.scale_levels[aScale] = newScale
+			else :
+				newScale = self.scale_levels[aScale]
 
-			newScale = Scale_Level(greyblobs, image, greyMarks, aScale)
-			self.scale_levels.append(newScale)
 
-			newScaleMarks = self.Link_Greyblobs(prevScaleMarks, newScale)
-			self.scaleBlob_Marks.append(newScaleMarks)
-			prevScaleMarks = newScaleMarks
+			isAmbiguous, candidates = self.Find_Candidates(prevScale, newScale)
+
+			if not isAmbiguous or isForced :
+				self.Link_GreyBlobs(candidates, newScale)
+				prevScale = newScale
+				refinementCnt = 0
+				isForced = False
+			else :
+
+				refinementCnt += 1
+				# Ah, an ambiguity! Therefore, we need to put the current scale level off and
+				#   dynamically try for some intermediate scale level, if possible.
+				scale_values.append(aScale)
+
+				refineScale = int(self.ScaleTrans_Inverse((self.ScaleTrans(aScale) + 
+									   self.ScaleTrans(prevScale.scaleVal)) / 2.0))
+
+				if (refinementCnt >= refinementLimit) or (refineScale in self.scale_levels) or (refineScale in scale_values) :
+					# Either we have done too much refinement or the integer limitation
+					# caused us to calculate an already existing scale level.
+					# Therefore, we shall force the linkage of the current candidates.
+					isForced = True
+				else :
+					# place the new scale value at the top of the stack.
+					scale_values.append(refineScale)
+					isForced = False
+
+		# End while len(scale_values) > 0
 
 
 
@@ -175,126 +238,168 @@ class Primal_Sketch :
 #		# Right now, assume that the scale size is changing monotonically.
 #		# Therefore, I won't bother with trying to sort and mess around with linkage issues.
 #		self.scale_levels.append(Scale_Level(greyblobs, image, greyMarks, scaleVal))
-		
-	def Link_Greyblobs(self, prevScaleMarks, newScale) :
-		currIDNum = len(self.scaleBlobs_bright)
-		currScaleMarks = numpy.empty(prevScaleMarks.shape, dtype=int)
-		currScaleMarks.fill(self.UNMARKED)
 
-		ignoreThese = frozenset([self.UNMARKED])
-		scaleBlobsMatched = set([])
-		scaleMap = {}
+	def ScaleTrans(self, scaleVal) :
+		# Just a stub until I truely implement this
+		return scaleVal
+
+	def ScaleTrans_Inverse(self, scaleVal) :
+		# Just a stub until I truely implement this
+		return scaleVal
+
 		
+	def Find_Candidates(self, prevScale, currScale) :
+		ignoreThese = frozenset([UNMARKED])
 		
-		for aGreyBlob in newScale.greyBlobs :
-			# Find out what scale space blob existed at the previous scale level at the location
+
+		currScale_candidates = {}
+		for aGreyBlob in currScale.greyBlobs :
+			# Find out which grey blobs existed at the previous scale level at the location
 			# of this grey blob's extremum. We automatically removed any UNMARKED as well.
-			blobIndices = set([prevScaleMarks[anIndex] for anIndex in aGreyBlob.extremum]) - ignoreThese
+			greyIndices = set([prevScale.greyMarks[anIndex] for anIndex in aGreyBlob.extremum]) - ignoreThese
 
-			if len(blobIndices) == 0 :
+			currScale_candidates[aGreyBlob] = [prevScale.greyBlobs[anIndex] for anIndex in greyIndices]
+
+
+		
+		prevScale_candidates = {}
+		for aGreyBlob in prevScale.greyBlobs :
+			# Find out which grey blobs exists at the current scale level at the location
+			# of this grey blob's extremum. We automatically removed any UNMARKED as well.
+			greyIndices = set([currScale.greyMarks[anIndex] for anIndex in aGreyBlob.extremum]) - ignoreThese
+
+			prevScale_candidates[aGreyBlob] = [currScale.greyBlobs[anIndex] for anIndex in greyIndices]
+
+
+
+		isAmbiguous = False
+		for currGreyBlob, prevCandidates in currScale_candidates.iteritems() :
+			if len(prevCandidates) > 2 :
+				isAmbiguous = True
+				break
+			elif len(prevCandidates) == 2 :
+				if (len(prevScale_candidates[prevCandidates[0]]) == 2 or
+				    len(prevScale_candidates[prevCandidates[1]]) == 2) :
+					isAmbiguous = True
+					break
+
+		if not isAmbiguous :
+			for prevGreyBlob, currCandidates in prevScale_candidates.iteritems() :
+				if len(currCandidates) > 2 :
+					isAmbiguous = True
+					break
+
+		return isAmbiguous, {'currScale': currScale_candidates,
+				     'prevScale': prevScale_candidates}
+
+
+
+	def Link_GreyBlobs(self, candidates, currScale) :
+		currScale_candidates = candidates['currScale']
+		prevScale_candidates = candidates['prevScale']
+		
+		for (currGreyBlob, prevCandidates) in currScale_candidates.iteritems() :
+			if len(prevCandidates) == 0 :
 				# This is an absolutely brand-new scale blob!
-				for anIndex in aGreyBlob.support_region :
-					currScaleMarks[anIndex] = currIDNum
+				new_blob = ScaleSpace_Blob(self.currIDNum)
+				new_event = new_blob.Start_ScaleBlob(currGreyBlob, currScale)
 
-				new_blob = ScaleSpace_Blob(currIDNum)
-				new_event = new_blob.Start_ScaleBlob(aGreyBlob, newScale)
+				Mark_ScaleBlob(currGreyBlob, currScale.scaleMarks, self.currIDNum)
 
-				currIDNum += 1
+				self.currIDNum += 1
 				self.scaleBlobs_bright.append(new_blob)
 				self.events_bright.append(new_event)
-			else :
-				if len(blobIndices) > 1 :
-					print "Degenerate situation! Not correctly implemented!"
 
-				blobIndex = list(blobIndices)[0]	# just grabbing one
-				# There is at least a continuation, but it could be many other things.
-				if blobIndex in scaleBlobsMatched :
-					scaleMap[blobIndex].append(aGreyBlob)
-				else :
-					scaleBlobsMatched.add(blobIndex)
-					scaleMap[blobIndex] = [aGreyBlob]
-
-		for (scaleBlobIndex, greyBlobs) in scaleMap.items() :
-			aScaleBlob = self.scaleBlobs_bright[scaleBlobIndex]
-			if len(greyBlobs) == 1 :
-				# Is it a simple linkage or a merger?
-				theSaddle = aScaleBlob.grey_blobs[-1].saddle
-				if theSaddle is None or len(theSaddle.grey_blobs) <= 1 :
+			elif len(prevCandidates) == 1 and len(currCandidates[prevCandidates[0]]) == 1 :
+					# It is only a continuation if the length of the corresponding candidate matching is one
 					# Simple linkage
-					aScaleBlob.Continue_ScaleBlob(greyBlobs[0], newScale)
-				else :
-					# Merger
-					currIDNum = self.Merge_ScaleBlobs(greyBlobs[0], currIDNum, currScaleMarks,
-									  newScale, [aScaleBlob])
+					theScaleBlob = prevCandidates[0].scaleBlob
+					theScaleBlob.Continue_ScaleBlob(currGreyBlob, currScale)
+					Mark_ScaleBlob(currGreyBlob, currScale.scaleMarks, theScaleBlob.idNum)
+
+			elif len(prevCandidates) == 2 and (len(currCandidates[prevCandidates[0]]) == 1 and
+				    			   len(currCandidates[prevCandidates[1]]) == 1) :
+				# It is a merge only for certain linkages
+				self.Merge_ScaleBlobs(currGreyBlob, currScale, [prevCandidates[0].scaleBlob,
+										prevCandidates[1].scaleBlob])
 
 			else :
-				# Is it a simple split or creation of new scale blobs?
-				# NOTE: FOR NOW we are gonna lie!
-				currIDNum = self.Split_ScaleBlob(greyBlobs, currIDNum, currScaleMarks,
-								 newScale, aScaleBlob)
-				
+				print "Degenerate situation? len(prevCandidates):", len(prevCandidates)
+				print "Creating a new Scale Blob for now..."
+				new_blob = ScaleSpace_Blob(self.currIDNum)
+                                new_event = new_blob.Start_ScaleBlob(currGreyBlob, currScale)
+
+                                Mark_ScaleBlob(currGreyBlob, currScale.scaleMarks, self.currIDNum)
+
+                                self.currIDNum += 1
+                                self.scaleBlobs_bright.append(new_blob)
+                                self.events_bright.append(new_event)
+
+
+		for (prevGreyBlob, currCandidates) in prevScale_candidates.iteritems() :
+			if len(currCandidates) == 0 :
+				# This is an absolutely dead scale blob!
+				end_event = prevGreyBlob.scaleBlob.End_ScaleBlob()
+				self.events_bright.append(end_event)
+
+			elif len(currCandidates) == 2 and (len(prevCandidates[currCandidates[0]]) == 1 and
+							   len(prevCandidates[currCandidates[1]]) == 1) :
+				# This is a split only for certain linkages.
+				self.Split_ScaleBlob(currCandidates, currScale, prevGreyBlob.scaleBlob)
 
 
 
-		# Any scale blobs from the previous level that are unmatched needs to be discontinued.
-		unmatchedBlobs = set(prevScaleMarks.flat) - scaleBlobsMatched - ignoreThese
-		for blobIndex in unmatchedBlobs :
-			end_event = self.scaleBlobs_bright[blobIndex].End_ScaleBlob()
-			self.events_bright.append(end_event)
-
-		return currScaleMarks
 
 
-	def Split_ScaleBlob(self, greyBlobs, currIDNum, currScaleMarks, scaleLevel, scaleBlob) :
+	def Split_ScaleBlob(self, greyBlobs, scaleLevel, scaleBlob) :
 		splitEvent = Scale_Event(Scale_Event.SPLIT,
                                          [scaleBlob], [],
+					 # Might need to change...
                                          scaleBlob.support_regions[-1].first_moment(),
                                          scaleLevel)
 
 		newScaleBlobs = []
 		for aGreyBlob in greyBlobs :
-			for anIndex in aGreyBlob.support_region :
-				currScaleMarks[anIndex] = currIDNum
+			Mark_ScaleBlob(aGreyBlob, scaleLevel.scaleMarks, self.currIDNum)
 
-			newBlob = ScaleSpace_Blob(currIDNum)
+			newBlob = ScaleSpace_Blob(self.currIDNum)
+			aGreyBlob.scaleBlob = newBlob
 			newBlob.grey_blobs.append(aGreyBlob)
 			newBlob.appearance = scaleLevel
+			newBlob.disappearance = scaleLevel
 			newBlob.support_regions.append(aGreyBlob.support_region)
                 	newBlob.scale_levels.append(scaleLevel)
 			newBlob.events.append(splitEvent)
 
-			currIDNum += 1
+			self.currIDNum += 1
 
 			newScaleBlobs.append(newBlob)
 
 		# TODO: Probably some more things I was supposed to do...
 		splitEvent.scaleBlobs_below = newScaleBlobs
+
 		scaleBlob.events.append(splitEvent)
+
 		self.events_bright.append(splitEvent)
 		self.scaleBlobs_bright += newScaleBlobs
 
-		return currIDNum
 
 
-
-	def Merge_ScaleBlobs(self, greyBlob, currIDNum, currScaleMarks, scaleLevel, scaleBlobs) :
-		for anIndex in greyBlob.support_region :
-                	currScaleMarks[anIndex] = currIDNum
+	def Merge_ScaleBlobs(self, greyBlob, scaleLevel, scaleBlobs) :
+		Mark_ScaleBlob(greyBlob, scaleLevel.scaleMarks, self.currIDNum)
 		
-		newBlob = ScaleSpace_Blob(currIDNum)
-		newBlob.grey_blobs.append(greyBlob)
-
-		currIDNum += 1
-
 		# Not exactly sure how we are going to represent it correctly,
 		#     so we will get away with just creating a new blob for now
-		
+		newBlob = ScaleSpace_Blob(self.currIDNum)
+		greyBlob.scaleBlob = newBlob
+		newBlob.grey_blobs.append(greyBlob)		
 		newBlob.appearance = scaleLevel
+		newBlob.disappearance = scaleLevel
 		newBlob.support_regions.append(greyBlob.support_region)
                 newBlob.scale_levels.append(scaleLevel)
 
+		self.currIDNum += 1
 
-		# I know, I am missing the other scale blobs...
 		mergeEvent = Scale_Event(Scale_Event.MERGE,
 					 scaleBlobs, [newBlob],
                                        	 greyBlob.support_region.first_moment(),
@@ -305,9 +410,6 @@ class Primal_Sketch :
 			aScaleBlob.events.append(mergeEvent)
 					
 		# TODO: end the other scale blobs!
-					
-
 		self.events_bright.append(mergeEvent)
 		self.scaleBlobs_bright.append(newBlob)
 
-		return currIDNum
