@@ -223,7 +223,8 @@ def MarkComponents(components, basinMarks, basinNumber, level, globs, componentM
 					
 			# This is a catch-all to make sure that the globs get stopped if they have to be
 			if basinToAssign == GLOBBED :
-				theGlobs = [globs[aBasin] for aBasin in basinsTouch if aBasin != GLOBBED and globs[aBasin].saddle is None]
+				theGlobs = [globs[aBasin] for aBasin in basinsTouch if aBasin != GLOBBED 
+											and globs[aBasin].saddle is None]
 				newSaddle = Saddle_Region(pixels, level, theGlobs)
 				for aBlob in theGlobs :
 					aBlob.saddle = newSaddle
