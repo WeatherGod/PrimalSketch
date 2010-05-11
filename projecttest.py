@@ -14,9 +14,12 @@ import matplotlib.axes
 import mpl_toolkits.mplot3d.axes3d as p3
 import mpl_toolkits.mplot3d.art3d as art3d
 
-scales = [41, 30, 21, 13, 5, 1, 0]#, 11, 5, 1, 0]
+
 
 def foo(ps) :
+
+	scales = [41, 30, 24, 12, 6, 3, 2, 1, 0]
+
 	radarData = LoadRastRadar("6500KTLX20050514_052255.nc")
 	radarData['vals'] = numpy.nan_to_num(numpy.squeeze(radarData['vals']))
 

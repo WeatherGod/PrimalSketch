@@ -1,7 +1,8 @@
 from __future__ import division		# allows '//' to mean integer division
 import numpy
-import Watershed as ws
-#import scipy.special		# for the .kn() "modified Bessel function"
+import Watershed as ws		# needed for calling watershed transform,
+				#   various classes like Support_Region, and
+				#   for IGNORETHESE, UNMARKED
 import scipy.signal		# for sepfir2d() and gaussian()
 
 
@@ -47,7 +48,7 @@ class ScaleSpace_Blob :
 		endEvent = Scale_Event(Scale_Event.DESTRUCTION,
 				       [self], [],
 				       self.support_regions[-1].first_moment(),
-				       self.scale_levels[-1])
+				       self.disappearance)
 		self.events.append(endEvent)
 		return endEvent
 
@@ -124,8 +125,13 @@ class Scale_Level :
 		self.image = image
 
 		if greyMarks is None :
+			# Note a difference between greyMarks and scaleMarks.
+			#   greyMarks is using ws.UNMARKED for default fill,
+			#   while scaleMarks is using UNMARKED for default fill.
+			# THIS IS INTENTIONAL!
 			self.greyMarks = numpy.empty(image.shape, dtype=int)
-			self.greyMarks.fill(UNMARKED)
+			self.greyMarks.fill(ws.UNMARKED)
+
 		else :
 			self.greyMarks = greyMarks
 
@@ -137,7 +143,15 @@ class Scale_Level :
 
 def Mark_ScaleBlob(aGreyBlob, scaleBlob_Label, idNum) :
 	for anIndex in aGreyBlob.support_region :
+		if scaleBlob_Label[anIndex] >= 0 :
+			print "Oops!", scaleBlob_Label[anIndex], idNum
 		scaleBlob_Label[anIndex] = idNum
+
+def RemoveGreyBlob(candidates, greyBlob) :
+	for aGreyBlob in candidates :
+		if greyBlob in candidates[aGreyBlob] :
+			candidates[aGreyBlob].remove(greyBlob)
+	
 
 
 
@@ -188,7 +202,7 @@ class Primal_Sketch :
 			else :
 				newScale = self.scale_levels[aScale]
 
-
+			print "Finding Candidates..."
 			isAmbiguous, candidates = self.Find_Candidates(prevScale, newScale)
 
 			if not isAmbiguous or isForced :
@@ -246,102 +260,236 @@ class Primal_Sketch :
 
 		
 	def Find_Candidates(self, prevScale, currScale) :
-		ignoreThese = frozenset([UNMARKED])
-		
-
-		currScale_candidates = {}
+		curr_prev_dnCandidates = {}
+		prev_curr_dnCandidates = {}
 		for aGreyBlob in currScale.greyBlobs :
 			# Find out which grey blobs existed at the previous scale level at the location
-			# of this grey blob's extremum. We automatically removed any UNMARKED as well.
-			greyIndices = set([prevScale.greyMarks[anIndex] for anIndex in aGreyBlob.extremum]) - ignoreThese
+			# of this grey blob's extremum. We automatically removed any IGNORETHESE as well from the watershed.
+			greyIndices = set([prevScale.greyMarks[anIndex] for anIndex in aGreyBlob.extremum]) - ws.IGNORETHESE
 
-			currScale_candidates[aGreyBlob] = [prevScale.greyBlobs[anIndex] for anIndex in greyIndices]
-
+			prevGreyBlobs = [prevScale.greyBlobs[anIndex] for anIndex in greyIndices]
+			curr_prev_dnCandidates[aGreyBlob] = prevGreyBlobs
+			for prevGreyBlob in prevGreyBlobs :
+				prev_curr_dnCandidates.setdefault(prevGreyBlob, []).append(aGreyBlob)
 
 		
-		prevScale_candidates = {}
+		prev_curr_upCandidates = {}
+		curr_prev_upCandidates = {}
 		for aGreyBlob in prevScale.greyBlobs :
 			# Find out which grey blobs exists at the current scale level at the location
-			# of this grey blob's extremum. We automatically removed any UNMARKED as well.
-			greyIndices = set([currScale.greyMarks[anIndex] for anIndex in aGreyBlob.extremum]) - ignoreThese
+			# of this grey blob's extremum. We automatically removed any IGNORETHESE as well from the watershed
+			greyIndices = set([currScale.greyMarks[anIndex] for anIndex in aGreyBlob.extremum]) - ws.IGNORETHESE
 
-			prevScale_candidates[aGreyBlob] = [currScale.greyBlobs[anIndex] for anIndex in greyIndices]
-
+			currGreyBlobs = [currScale.greyBlobs[anIndex] for anIndex in greyIndices]
+			prev_curr_upCandidates[aGreyBlob] = currGreyBlobs
+			for currGreyBlob in currGreyBlobs :
+				curr_prev_upCandidates.setdefault(currGreyBlob, []).append(aGreyBlob)
 
 
 		isAmbiguous = False
-		for currGreyBlob, prevCandidates in currScale_candidates.iteritems() :
+		for currGreyBlob, prevCandidates in curr_prev_dnCandidates.iteritems() :
 			if len(prevCandidates) > 2 :
 				isAmbiguous = True
 				break
 			elif len(prevCandidates) == 2 :
-				if (len(prevScale_candidates[prevCandidates[0]]) == 2 or
-				    len(prevScale_candidates[prevCandidates[1]]) == 2) :
-					isAmbiguous = True
+				if (len(prev_curr_upCandidates[prevCandidates[0]]) == 2 or
+				    len(prev_curr_upCandidates[prevCandidates[1]]) == 2) :
+				    	isAmbiguous = True
 					break
 
 		if not isAmbiguous :
-			for prevGreyBlob, currCandidates in prevScale_candidates.iteritems() :
+			for prevGreyBlob, currCandidates in prev_curr_upCandidates.iteritems() :
 				if len(currCandidates) > 2 :
 					isAmbiguous = True
 					break
 
-		return isAmbiguous, {'currScale': currScale_candidates,
-				     'prevScale': prevScale_candidates}
+		return isAmbiguous, {'upLink': (curr_prev_upCandidates,
+						prev_curr_upCandidates),
+				     'downLink': (curr_prev_dnCandidates,
+						  prev_curr_dnCandidates)}
 
 
 
 	def Link_GreyBlobs(self, candidates, currScale) :
-		currScale_candidates = candidates['currScale']
-		prevScale_candidates = candidates['prevScale']
-		
-		for (currGreyBlob, prevCandidates) in currScale_candidates.iteritems() :
-			if len(prevCandidates) == 0 :
-				# This is an absolutely brand-new scale blob!
-				new_blob = ScaleSpace_Blob(self.currIDNum)
-				new_event = new_blob.Start_ScaleBlob(currGreyBlob, currScale)
+		# Candidate matching extrema of the previous grey blobs to the current grey blobs
+		curr_prev_up, prev_curr_up = candidates['upLink']
+		# Candidate matching extrema of the current grey blobs to the previous grey blobs
+		curr_prev_dn, prev_curr_dn = candidates['downLink']
 
-				Mark_ScaleBlob(currGreyBlob, currScale.scaleMarks, self.currIDNum)
 
-				self.currIDNum += 1
-				self.scaleBlobs_bright.append(new_blob)
-				self.events_bright.append(new_event)
+		# the grey blobs on the previous scale that has been unambiguously matched
+		prevGreyBlobsMatched = set([])
+		# the grey blobs on the current scale that has been unambiguously matched
+		currGreyBlobsMatched = set([])
 
-			elif len(prevCandidates) == 1 and len(prevScale_candidates[prevCandidates[0]]) == 1 :
-					# It is only a continuation if the length of the corresponding candidate matching is one
+
+		# Search for creations, continuations and mergers unambiguously
+		foundUnambiguous = True
+
+		while foundUnambiguous :
+			# Set this to True if we encounter an unambiguous matching
+			# If we go through the loop without an unambiguous matching,
+			#   then there is no way we can discover new linkages with
+			#   respect to the remaining grey blobs.
+			#
+			# But, could they still be a part of a split?
+
+			foundUnambiguous = False
+			newGreyBlobsMatched = set([])
+
+			for currGreyBlob in curr_prev_dn :
+				# Gotta clean up the list of greyblobs that have already been taken
+				prevCandidates = curr_prev_dn[currGreyBlob]
+				newGreyBlobsMatched = set([])
+
+
+				if len(prevCandidates) == 0 :
+					# This is an absolutely brand-new scale blob!
+					new_blob = ScaleSpace_Blob(self.currIDNum)
+					new_event = new_blob.Start_ScaleBlob(currGreyBlob, currScale)
+
+					Mark_ScaleBlob(currGreyBlob, currScale.scaleMarks, self.currIDNum)
+
+					self.currIDNum += 1
+					self.scaleBlobs_bright.append(new_blob)
+					self.events_bright.append(new_event)
+
+					foundUnambiguous = True
+					newGreyBlobsMatched.add(currGreyBlob)
+					RemoveGreyBlob(prev_curr_dn, currGreyBlob)
+					RemoveGreyBlob(prev_curr_up, currGreyBlob)
+
+				elif len(prevCandidates) == 1 and len(prev_curr_up[prevCandidates[0]]) == 1 :
+					# We are asserting (currGreyBlob is prev_curr_dn[prevCandidates[0]][0])
+					# It is only a continuation if the lengths of the corresponding candidate matchings are one
 					# Simple linkage
 					theScaleBlob = prevCandidates[0].scaleBlob
 					theScaleBlob.Continue_ScaleBlob(currGreyBlob, currScale)
 					Mark_ScaleBlob(currGreyBlob, currScale.scaleMarks, theScaleBlob.idNum)
 
-			elif len(prevCandidates) == 2 and (len(prevScale_candidates[prevCandidates[0]]) == 1 and
-				    			   len(prevScale_candidates[prevCandidates[1]]) == 1) :
-				# It is a merge only for certain linkages
-				self.Merge_ScaleBlobs(currGreyBlob, currScale, [prevCandidates[0].scaleBlob,
-										prevCandidates[1].scaleBlob])
+					foundUnambiguous = True
+					newGreyBlobsMatched.add(currGreyBlob)
+					prevGreyBlobsMatched.update(prevCandidates)
+					prev_curr_dn.pop(prevCandidates[0])
+					prev_curr_up.pop(prevCandidates[0], None)
 
-			else :
-				print "Degenerate situation? len(prevCandidates):", len(prevCandidates)
-				new_blob = ScaleSpace_Blob(self.currIDNum)
-                                new_event = new_blob.Start_ScaleBlob(currGreyBlob, currScale)
+					RemoveGreyBlob(curr_prev_up, prevCandidates[0])
+					RemoveGreyBlob(curr_prev_dn, prevCandidates[0])
 
-                                Mark_ScaleBlob(currGreyBlob, currScale.scaleMarks, self.currIDNum)
+					RemoveGreyBlob(prev_curr_dn, currGreyBlob)
+					RemoveGreyBlob(prev_curr_up, currGreyBlob)
 
-                                self.currIDNum += 1
-                                self.scaleBlobs_bright.append(new_blob)
-                                self.events_bright.append(new_event)
+				elif len(prevCandidates) == 2 and (len(prev_curr_up[prevCandidates[0]]) == 1 and
+					    			   len(prev_curr_up[prevCandidates[1]]) == 1) :
+
+					# It is a merge only for certain linkages
+					self.Merge_ScaleBlobs(currGreyBlob, currScale, [prevCandidates[0].scaleBlob,
+											prevCandidates[1].scaleBlob])
+
+					foundUnambiguous = True
+					newGreyBlobsMatched.add(currGreyBlob)
+					prevGreyBlobsMatched.update(prevCandidates)
+					prev_curr_dn.pop(prevCandidates[0])
+					prev_curr_dn.pop(prevCandidates[1])
+					
+					prev_curr_up.pop(prevCandidates[0], None)
+					prev_curr_up.pop(prevCandidates[1], None)
+
+					RemoveGreyBlob(curr_prev_up, prevCandidates[0])
+					RemoveGreyBlob(curr_prev_up, prevCandidates[1])
+
+					RemoveGreyBlob(curr_prev_dn, prevCandidates[0])
+					RemoveGreyBlob(curr_prev_dn, prevCandidates[1])
+
+					RemoveGreyBlob(prev_curr_dn, currGreyBlob)
+					RemoveGreyBlob(prev_curr_up, currGreyBlob)
+					
+
+			# end for greyblobs
+
+			currGreyBlobsMatched.update(newGreyBlobsMatched)
+			for aCurrGreyBlob in newGreyBlobsMatched :
+				curr_prev_dn.pop(aCurrGreyBlob)
+				curr_prev_up.pop(aCurrGreyBlob, None)
+
+		# end while foundUnambiguous
 
 
-		for (prevGreyBlob, currCandidates) in prevScale_candidates.iteritems() :
-			if len(currCandidates) == 0 :
-				# This is an absolutely dead scale blob!
-				end_event = prevGreyBlob.scaleBlob.End_ScaleBlob()
-				self.events_bright.append(end_event)
+		# Now search for destructions and splits
+		foundUnambiguous = True
 
-			elif len(currCandidates) == 2 and (len(currScale_candidates[currCandidates[0]]) == 1 and
-							   len(currScale_candidates[currCandidates[1]]) == 1) :
-				# This is a split only for certain linkages.
-				self.Split_ScaleBlob(currCandidates, currScale, prevGreyBlob.scaleBlob)
+		while foundUnambiguous :
+
+			foundUnambiguous = False
+
+			newGreyBlobsMatched = set([])
+
+			for prevGreyBlob in prev_curr_up :
+				currCandidates = prev_curr_up[prevGreyBlob]
+
+				if len(currCandidates) == 0 :
+					# This is an absolutely dead scale blob!
+					end_event = prevGreyBlob.scaleBlob.End_ScaleBlob()
+					self.events_bright.append(end_event)
+
+					foundUnambiguous = True
+					#prevGreyBlobsMatched.add(prevGreyBlob)
+					newGreyBlobsMatched.add(prevGreyBlob)
+					RemoveGreyBlob(curr_prev_up, prevGreyBlob)
+					RemoveGreyBlob(curr_prev_dn, prevGreyBlob)
+
+				elif len(currCandidates) == 2 and (len(set(curr_prev_dn[currCandidates[0]])) == 1 and
+								   len(set(curr_prev_dn[currCandidates[1]])) == 1) :
+					# This is a split only for certain linkages.
+					self.Split_ScaleBlob(currCandidates, currScale, prevGreyBlob.scaleBlob)
+
+					foundUnambiguous = True
+					currGreyBlobsMatched.update(currCandidates)
+					newGreyBlobsMatched.add(prevGreyBlob)
+
+					curr_prev_up.pop(currCandidates[0])
+					curr_prev_up.pop(currCandidates[1])
+
+					curr_prev_dn.pop(currCandidates[0], None)
+					curr_prev_dn.pop(currCandidates[1], None)
+
+					RemoveGreyBlob(prev_curr_up, currCandidates[0])
+                                        RemoveGreyBlob(prev_curr_up, currCandidates[1])
+
+                                        RemoveGreyBlob(prev_curr_dn, currCandidates[0])
+                                        RemoveGreyBlob(prev_curr_dn, currCandidates[1])
+
+                                        RemoveGreyBlob(curr_prev_dn, prevGreyBlob)
+                                        RemoveGreyBlob(curr_prev_up, prevGreyBlob)
+
+					
+
+					
+			# end for greyblobs
+
+			prevGreyBlobsMatched.update(newGreyBlobsMatched)
+                        for aPrevGreyBlob in newGreyBlobsMatched :
+                                prev_curr_up.pop(aPrevGreyBlob)
+				prev_curr_dn.pop(aPrevGreyBlob, None)
+		# end while foundUnambiguous
+					
+
+		# Any remaining greyBlobs are ambiguous
+		for currGreyBlob in curr_prev_dn :
+			prevCandidates = curr_prev_dn[currGreyBlob]
+			print "Degenerate situation? len(prevCandidates):", len(prevCandidates), \
+			      "  len(support_region):", len(currGreyBlob.support_region)
+			new_blob = ScaleSpace_Blob(self.currIDNum)
+                        new_event = new_blob.Start_ScaleBlob(currGreyBlob, currScale)
+
+                        Mark_ScaleBlob(currGreyBlob, currScale.scaleMarks, self.currIDNum)
+
+                        self.currIDNum += 1
+                        self.scaleBlobs_bright.append(new_blob)
+                        self.events_bright.append(new_event)
+
+
+
 
 
 

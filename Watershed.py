@@ -49,8 +49,17 @@ class Saddle_Region(Support_Region) :
 		self.grey_blobs = greyblobs
 		set.__init__(self, pos)
 
+
+class Isopleth :
+	def __init__(self, pixels, higherIsos, componentID, components) :
+		self.higherIsos = higherIsos
+		self.componentID = componentID
+		self.components = components
+		self.pixels = pixels
+
 UNMARKED = -1
 GLOBBED = -3
+IGNORETHESE = frozenset([UNMARKED, GLOBBED])
 
 def Neighbors(pos, rangeVal, shape, inclSelf = False) :
 #	neighbors = []
@@ -100,13 +109,12 @@ def GetIsopleths(pixels, isoMarks, isoplethID) :
 
 	componentMap = []
 	establishedComponents = frozenset(range(curisoID))
-	nonComponents = frozenset([UNMARKED, GLOBBED])
 	newComponents = set([])
 
 	
 	# Processing all pixels for an isolevel
 	for aPix in pixels :
-		allComps = set([isoMarks[neighPix] for neighPix in Neighbors(aPix, 1, isoMarks.shape)]) - nonComponents
+		allComps = set([isoMarks[neighPix] for neighPix in Neighbors(aPix, 1, isoMarks.shape)]) - IGNORETHESE
 
 		# Return only neighboring isopleth IDs of those isopleths in pixels
 		connectedComponents = allComps - establishedComponents
@@ -116,10 +124,12 @@ def GetIsopleths(pixels, isoMarks, isoplethID) :
 
 		if len(connectedComponents) == 0 :
 			# A lonely pixel!  Start a new isopleth!
-			isopleths.append({'higherIsos': connectedHighers.copy(), 
-					  'pixels': [aPix],
-					  'componentID': isoplethID,
-					  'components': set([isoplethID])})
+			isopleths.append(Isopleth([aPix], connectedHighers.copy(),
+						  isoplethID, set([isoplethID])))
+#					 {'higherIsos': connectedHighers.copy(), 
+#					  'pixels': [aPix],
+#					  'componentID': isoplethID,
+#					  'components': set([isoplethID])})
 			isoMarks[aPix] = isoplethID
 			componentMap.append(isoplethID)
 			newComponents.update([isoplethID])
@@ -139,27 +149,27 @@ def GetIsopleths(pixels, isoMarks, isoplethID) :
 				UpdateComponentMap(componentMap, connectedComponents, isopleths, curisoID, thisIso)
 			
 			isoMarks[aPix] = thisIso
-			isopleths[thisIso - curisoID]['higherIsos'].update(connectedHighers)
-			isopleths[thisIso - curisoID]['pixels'].append(aPix)
-			isopleths[thisIso - curisoID]['components'].update(connectedComponents)
+			isopleths[thisIso - curisoID].higherIsos.update(connectedHighers)
+			isopleths[thisIso - curisoID].pixels.append(aPix)
+			isopleths[thisIso - curisoID].components.update(connectedComponents)
 
 #	print "Merging...", curisoID
 	# Merging the components, working backwards
 	for index in range(len(isopleths) - 1, -1, -1) :
-		if componentMap[index] != isopleths[index]['componentID'] :
+		if componentMap[index] != isopleths[index].componentID :
 			# This item has to get moved!
-			isopleths[componentMap[index] - curisoID]['higherIsos'].update(isopleths[index]['higherIsos'])
-			isopleths[componentMap[index] - curisoID]['pixels'] += isopleths[index]['pixels']
-			isopleths[componentMap[index] - curisoID]['components'].update(isopleths[index]['components'])
+			isopleths[componentMap[index] - curisoID].higherIsos.update(isopleths[index].higherIsos)
+			isopleths[componentMap[index] - curisoID].pixels += isopleths[index].pixels
+			isopleths[componentMap[index] - curisoID].components.update(isopleths[index].components)
 
 			isopleths[index] = None
 
 	#print "Consolidating..."	
 	finalIsopleths = [isopleths[anIsoID - curisoID] for anIsoID in set(componentMap)]
 	for index, anIso in enumerate(finalIsopleths) :
-		anIso['componentID'] = index + curisoID
-		for aPix in anIso['pixels'] :
-			isoMarks[aPix] = anIso['componentID']
+		anIso.componentID = index + curisoID
+		for aPix in anIso.pixels :
+			isoMarks[aPix] = anIso.componentID
 
 	return finalIsopleths, curisoID + len(finalIsopleths)
 
@@ -167,7 +177,7 @@ def UpdateComponentMap(componentMap, componentList, isopleths, curisoID, thisIso
 	for aComponent in componentList :
 		if componentMap[aComponent - curisoID] != thisIso :
 			componentMap[aComponent - curisoID] = thisIso
-			UpdateComponentMap(componentMap, isopleths[aComponent - curisoID]['components'], 
+			UpdateComponentMap(componentMap, isopleths[aComponent - curisoID].components, 
 					   isopleths, curisoID, thisIso)
 
 
@@ -176,9 +186,9 @@ def MarkComponents(components, basinMarks, basinNumber, level, globs, componentM
 	# Now, process each isopleth and figure out what it should be assigned as
 	for anIso in components :
 		# Ignore Globbed for the moment
-		touchHigherIsos = anIso['higherIsos']
-		pixels = anIso['pixels']
-		componentNum = anIso['componentID']
+		touchHigherIsos = anIso.higherIsos
+		pixels = anIso.pixels
+		componentNum = anIso.componentID
 
 		#print len(touchBasins), len(pixels)
 
