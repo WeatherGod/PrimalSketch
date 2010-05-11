@@ -143,7 +143,7 @@ def GetIsopleths(pixels, isoMarks, isoplethID) :
 			isopleths[thisIso - curisoID]['pixels'].append(aPix)
 			isopleths[thisIso - curisoID]['components'].update(connectedComponents)
 
-	print "Merging...", curisoID
+#	print "Merging...", curisoID
 	# Merging the components, working backwards
 	for index in range(len(isopleths) - 1, -1, -1) :
 		if componentMap[index] != isopleths[index]['componentID'] :

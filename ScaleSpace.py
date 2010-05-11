@@ -11,7 +11,7 @@ class ScaleSpace_Blob :
 		self.signifVal = None
 		self.appearance = None
 		self.disappearance = None
-		self.id_num = idNum
+		self.idNum = idNum
 
 		# This will list the grey blob for scale each level.
 		self.grey_blobs = []
@@ -141,10 +141,7 @@ def Mark_ScaleBlob(aGreyBlob, scaleBlob_Label, idNum) :
 
 
 
-
 class Primal_Sketch :
-
-
 	def __init__(self) :
 		self.scale_levels = {}
 
@@ -152,8 +149,6 @@ class Primal_Sketch :
 		self.events_bright = []
 
 		self.currIDNum = 0
-
-
 
 
 	def CreateSketch(self, image, scale_values, refinementLimit = 5) :
@@ -176,6 +171,7 @@ class Primal_Sketch :
 		# NOTE: scale_values may get dynamically updated within the loop as refinement occurs.
 		while len(scale_values) > 0 :
 			aScale = scale_values.pop()
+			print "Working level:", aScale
 
 			# This if statement allows for use of caching during the scale refinement process.
 			if aScale not in self.scale_levels :
@@ -196,12 +192,13 @@ class Primal_Sketch :
 			isAmbiguous, candidates = self.Find_Candidates(prevScale, newScale)
 
 			if not isAmbiguous or isForced :
+				print "Is it Ambiguous?", isAmbiguous
 				self.Link_GreyBlobs(candidates, newScale)
 				prevScale = newScale
 				refinementCnt = 0
 				isForced = False
 			else :
-
+				print "Refining..."
 				refinementCnt += 1
 				# Ah, an ambiguity! Therefore, we need to put the current scale level off and
 				#   dynamically try for some intermediate scale level, if possible.
@@ -310,22 +307,21 @@ class Primal_Sketch :
 				self.scaleBlobs_bright.append(new_blob)
 				self.events_bright.append(new_event)
 
-			elif len(prevCandidates) == 1 and len(currCandidates[prevCandidates[0]]) == 1 :
+			elif len(prevCandidates) == 1 and len(prevScale_candidates[prevCandidates[0]]) == 1 :
 					# It is only a continuation if the length of the corresponding candidate matching is one
 					# Simple linkage
 					theScaleBlob = prevCandidates[0].scaleBlob
 					theScaleBlob.Continue_ScaleBlob(currGreyBlob, currScale)
 					Mark_ScaleBlob(currGreyBlob, currScale.scaleMarks, theScaleBlob.idNum)
 
-			elif len(prevCandidates) == 2 and (len(currCandidates[prevCandidates[0]]) == 1 and
-				    			   len(currCandidates[prevCandidates[1]]) == 1) :
+			elif len(prevCandidates) == 2 and (len(prevScale_candidates[prevCandidates[0]]) == 1 and
+				    			   len(prevScale_candidates[prevCandidates[1]]) == 1) :
 				# It is a merge only for certain linkages
 				self.Merge_ScaleBlobs(currGreyBlob, currScale, [prevCandidates[0].scaleBlob,
 										prevCandidates[1].scaleBlob])
 
 			else :
 				print "Degenerate situation? len(prevCandidates):", len(prevCandidates)
-				print "Creating a new Scale Blob for now..."
 				new_blob = ScaleSpace_Blob(self.currIDNum)
                                 new_event = new_blob.Start_ScaleBlob(currGreyBlob, currScale)
 
@@ -342,8 +338,8 @@ class Primal_Sketch :
 				end_event = prevGreyBlob.scaleBlob.End_ScaleBlob()
 				self.events_bright.append(end_event)
 
-			elif len(currCandidates) == 2 and (len(prevCandidates[currCandidates[0]]) == 1 and
-							   len(prevCandidates[currCandidates[1]]) == 1) :
+			elif len(currCandidates) == 2 and (len(currScale_candidates[currCandidates[0]]) == 1 and
+							   len(currScale_candidates[currCandidates[1]]) == 1) :
 				# This is a split only for certain linkages.
 				self.Split_ScaleBlob(currCandidates, currScale, prevGreyBlob.scaleBlob)
 
