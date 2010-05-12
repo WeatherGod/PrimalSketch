@@ -415,16 +415,8 @@ class Primal_Sketch :
 				curr_prev_dn.pop(aCurrGreyBlob)
 				#curr_prev_up.pop(aCurrGreyBlob, None)
 
-		# end while foundUnambiguous
 
-
-		# Now search for destructions and splits
-		foundUnambiguous = True
-
-		while foundUnambiguous :
-
-			foundUnambiguous = False
-
+			# now search for annihilations and mergers
 			newGreyBlobsMatched = set([])
 
 			for prevGreyBlob in prev_curr_up :
@@ -466,9 +458,6 @@ class Primal_Sketch :
 
                                         #RemoveGreyBlob(curr_prev_dn, prevGreyBlob)
                                         #RemoveGreyBlob(curr_prev_up, prevGreyBlob)
-
-					
-
 					
 			# end for greyblobs
 
@@ -481,8 +470,9 @@ class Primal_Sketch :
 
 		# Any remaining greyBlobs are ambiguous
 		for currGreyBlob in curr_prev_dn :
-			prevCandidates = curr_prev_dn[currGreyBlob]
+			prevCandidates = list(set(curr_prev_dn[currGreyBlob]) - prevGreyBlobsMatched)
 			print "Degenerate situation? len(prevCandidates):", len(prevCandidates), \
+			      "  len(origPrevCandidates):", len(curr_prev_dn[currGreyBlob]), \
 			      "  len(support_region):", len(currGreyBlob.support_region)
 			new_blob = ScaleSpace_Blob(self.currIDNum)
                         new_event = new_blob.Start_ScaleBlob(currGreyBlob, currScale)
