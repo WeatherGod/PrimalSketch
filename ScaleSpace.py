@@ -339,8 +339,7 @@ class Primal_Sketch :
 
 			for currGreyBlob in curr_prev_dn :
 				# Gotta clean up the list of greyblobs that have already been taken
-				prevCandidates = curr_prev_dn[currGreyBlob]
-				newGreyBlobsMatched = set([])
+				prevCandidates = list(set(curr_prev_dn[currGreyBlob]) - prevGreyBlobsMatched)
 
 
 				if len(prevCandidates) == 0 :
@@ -355,11 +354,12 @@ class Primal_Sketch :
 					self.events_bright.append(new_event)
 
 					foundUnambiguous = True
+					currGreyBlobsMatched.add(currGreyBlob)
 					newGreyBlobsMatched.add(currGreyBlob)
-					RemoveGreyBlob(prev_curr_dn, currGreyBlob)
-					RemoveGreyBlob(prev_curr_up, currGreyBlob)
+					#RemoveGreyBlob(prev_curr_dn, currGreyBlob)
+					#RemoveGreyBlob(prev_curr_up, currGreyBlob)
 
-				elif len(prevCandidates) == 1 and len(prev_curr_up[prevCandidates[0]]) == 1 :
+				elif len(prevCandidates) == 1 and len(set(prev_curr_up[prevCandidates[0]]) - currGreyBlobsMatched) == 1 :
 					# We are asserting (currGreyBlob is prev_curr_dn[prevCandidates[0]][0])
 					# It is only a continuation if the lengths of the corresponding candidate matchings are one
 					# Simple linkage
@@ -368,49 +368,52 @@ class Primal_Sketch :
 					Mark_ScaleBlob(currGreyBlob, currScale.scaleMarks, theScaleBlob.idNum)
 
 					foundUnambiguous = True
+					currGreyBlobsMatched.add(currGreyBlob)
 					newGreyBlobsMatched.add(currGreyBlob)
 					prevGreyBlobsMatched.update(prevCandidates)
-					prev_curr_dn.pop(prevCandidates[0])
+					#prev_curr_dn.pop(prevCandidates[0])
 					prev_curr_up.pop(prevCandidates[0], None)
 
-					RemoveGreyBlob(curr_prev_up, prevCandidates[0])
-					RemoveGreyBlob(curr_prev_dn, prevCandidates[0])
+					#RemoveGreyBlob(curr_prev_up, prevCandidates[0])
+					#RemoveGreyBlob(curr_prev_dn, prevCandidates[0])
 
-					RemoveGreyBlob(prev_curr_dn, currGreyBlob)
-					RemoveGreyBlob(prev_curr_up, currGreyBlob)
+					#RemoveGreyBlob(prev_curr_dn, currGreyBlob)
+					#RemoveGreyBlob(prev_curr_up, currGreyBlob)
 
-				elif len(prevCandidates) == 2 and (len(prev_curr_up[prevCandidates[0]]) == 1 and
-					    			   len(prev_curr_up[prevCandidates[1]]) == 1) :
+				elif len(prevCandidates) == 2 and (len(set(prev_curr_up[prevCandidates[0]]) - currGreyBlobsMatched) == 1 and
+					    			   len(set(prev_curr_up[prevCandidates[1]]) - currGreyBlobsMatched) == 1) :
 
 					# It is a merge only for certain linkages
 					self.Merge_ScaleBlobs(currGreyBlob, currScale, [prevCandidates[0].scaleBlob,
 											prevCandidates[1].scaleBlob])
 
 					foundUnambiguous = True
+
+					currGreyBlobsMatched.add(currGreyBlob)
 					newGreyBlobsMatched.add(currGreyBlob)
 					prevGreyBlobsMatched.update(prevCandidates)
-					prev_curr_dn.pop(prevCandidates[0])
-					prev_curr_dn.pop(prevCandidates[1])
+					#prev_curr_dn.pop(prevCandidates[0])
+					#prev_curr_dn.pop(prevCandidates[1])
 					
 					prev_curr_up.pop(prevCandidates[0], None)
 					prev_curr_up.pop(prevCandidates[1], None)
 
-					RemoveGreyBlob(curr_prev_up, prevCandidates[0])
-					RemoveGreyBlob(curr_prev_up, prevCandidates[1])
+					#RemoveGreyBlob(curr_prev_up, prevCandidates[0])
+					#RemoveGreyBlob(curr_prev_up, prevCandidates[1])
 
-					RemoveGreyBlob(curr_prev_dn, prevCandidates[0])
-					RemoveGreyBlob(curr_prev_dn, prevCandidates[1])
+					#RemoveGreyBlob(curr_prev_dn, prevCandidates[0])
+					#RemoveGreyBlob(curr_prev_dn, prevCandidates[1])
 
-					RemoveGreyBlob(prev_curr_dn, currGreyBlob)
-					RemoveGreyBlob(prev_curr_up, currGreyBlob)
+					#RemoveGreyBlob(prev_curr_dn, currGreyBlob)
+					#RemoveGreyBlob(prev_curr_up, currGreyBlob)
 					
 
 			# end for greyblobs
 
-			currGreyBlobsMatched.update(newGreyBlobsMatched)
+			#currGreyBlobsMatched.update(newGreyBlobsMatched)
 			for aCurrGreyBlob in newGreyBlobsMatched :
 				curr_prev_dn.pop(aCurrGreyBlob)
-				curr_prev_up.pop(aCurrGreyBlob, None)
+				#curr_prev_up.pop(aCurrGreyBlob, None)
 
 		# end while foundUnambiguous
 
@@ -425,7 +428,7 @@ class Primal_Sketch :
 			newGreyBlobsMatched = set([])
 
 			for prevGreyBlob in prev_curr_up :
-				currCandidates = prev_curr_up[prevGreyBlob]
+				currCandidates = list(set(prev_curr_up[prevGreyBlob]) - currGreyBlobsMatched)
 
 				if len(currCandidates) == 0 :
 					# This is an absolutely dead scale blob!
@@ -435,42 +438,44 @@ class Primal_Sketch :
 					foundUnambiguous = True
 					#prevGreyBlobsMatched.add(prevGreyBlob)
 					newGreyBlobsMatched.add(prevGreyBlob)
-					RemoveGreyBlob(curr_prev_up, prevGreyBlob)
-					RemoveGreyBlob(curr_prev_dn, prevGreyBlob)
+					prevGreyBlobsMatched.add(prevGreyBlob)
+					#RemoveGreyBlob(curr_prev_up, prevGreyBlob)
+					#RemoveGreyBlob(curr_prev_dn, prevGreyBlob)
 
-				elif len(currCandidates) == 2 and (len(set(curr_prev_dn[currCandidates[0]])) == 1 and
-								   len(set(curr_prev_dn[currCandidates[1]])) == 1) :
+				elif len(currCandidates) == 2 and (len(set(curr_prev_dn[currCandidates[0]]) - prevGreyBlobsMatched) == 1 and
+								   len(set(curr_prev_dn[currCandidates[1]]) - prevGreyBlobsMatched) == 1) :
 					# This is a split only for certain linkages.
 					self.Split_ScaleBlob(currCandidates, currScale, prevGreyBlob.scaleBlob)
 
 					foundUnambiguous = True
 					currGreyBlobsMatched.update(currCandidates)
 					newGreyBlobsMatched.add(prevGreyBlob)
+					prevGreyBlobsMatched.add(prevGreyBlob)
 
-					curr_prev_up.pop(currCandidates[0])
-					curr_prev_up.pop(currCandidates[1])
+					#curr_prev_up.pop(currCandidates[0])
+					#curr_prev_up.pop(currCandidates[1])
 
 					curr_prev_dn.pop(currCandidates[0], None)
 					curr_prev_dn.pop(currCandidates[1], None)
 
-					RemoveGreyBlob(prev_curr_up, currCandidates[0])
-                                        RemoveGreyBlob(prev_curr_up, currCandidates[1])
+					#RemoveGreyBlob(prev_curr_up, currCandidates[0])
+                                        #RemoveGreyBlob(prev_curr_up, currCandidates[1])
 
-                                        RemoveGreyBlob(prev_curr_dn, currCandidates[0])
-                                        RemoveGreyBlob(prev_curr_dn, currCandidates[1])
+                                        #RemoveGreyBlob(prev_curr_dn, currCandidates[0])
+                                        #RemoveGreyBlob(prev_curr_dn, currCandidates[1])
 
-                                        RemoveGreyBlob(curr_prev_dn, prevGreyBlob)
-                                        RemoveGreyBlob(curr_prev_up, prevGreyBlob)
+                                        #RemoveGreyBlob(curr_prev_dn, prevGreyBlob)
+                                        #RemoveGreyBlob(curr_prev_up, prevGreyBlob)
 
 					
 
 					
 			# end for greyblobs
 
-			prevGreyBlobsMatched.update(newGreyBlobsMatched)
+			#prevGreyBlobsMatched.update(newGreyBlobsMatched)
                         for aPrevGreyBlob in newGreyBlobsMatched :
                                 prev_curr_up.pop(aPrevGreyBlob)
-				prev_curr_dn.pop(aPrevGreyBlob, None)
+				#prev_curr_dn.pop(aPrevGreyBlob, None)
 		# end while foundUnambiguous
 					
 
