@@ -27,6 +27,19 @@ class ScaleSpace_Blob :
 		self.approp_greyblob = None
 		self.atBoundary = None
 
+	def volume(self) :
+		# Not fully correct due to lack of normalization...
+		vols, scaleVals = zip(*[(aGreyBlob.volume(aScaleLevel.image), aScaleLevel.scaleVal) 
+					for aGreyBlob, aScaleLevel in zip(self.grey_blobs, self.scale_levels)])
+
+		delta_ts = numpy.diff(scaleVals)
+		volume = 0.0
+		# trapezoidal integration
+		for index, delta_t in enumerate(delta_ts) :
+			volume += ((vols[index] + vols[index + 1]) * delta_t) / 2.0
+
+		return volume
+
 
 	def Start_ScaleBlob(self, greyBlob, scaleLevel) :
 		greyBlob.scaleBlob = self
@@ -44,12 +57,18 @@ class ScaleSpace_Blob :
 		self.events.append(newEvent)
 		return newEvent
 
-	def End_ScaleBlob(self) :
+	def End_ScaleBlob(self, scaleLevel) :
 		endEvent = Scale_Event(Scale_Event.DESTRUCTION,
 				       [self], [],
 				       self.support_regions[-1].first_moment(),
-				       self.disappearance)
+				       scaleLevel)
 		self.events.append(endEvent)
+		fakeBlob = ws.GreyLevel_Blob([], 0)
+		fakeBlob.scaleBlob = self
+		
+		self.grey_blobs.append(fakeBlob)
+		self.support_regions.append(fakeBlob.support_region)
+		self.scale_levels.append(scaleLevel)
 		return endEvent
 
 	def Continue_ScaleBlob(self, greyBlob, scaleLevel) :
@@ -107,6 +126,7 @@ class Scale_Event :
 	SPLIT = 1
 	MERGE = 2
 	DESTRUCTION = 3
+	COMPLEX = 4
 
 	def __init__(self, event_type, scaleblobs_above = [], scaleblobs_below = [], position = None, scale_lev = None) :
 		self.event_type = event_type
@@ -416,7 +436,7 @@ class Primal_Sketch :
 				#curr_prev_up.pop(aCurrGreyBlob, None)
 
 
-			# now search for annihilations and mergers
+			# now search for annihilations and splits
 			newGreyBlobsMatched = set([])
 
 			for prevGreyBlob in prev_curr_up :
@@ -424,7 +444,7 @@ class Primal_Sketch :
 
 				if len(currCandidates) == 0 :
 					# This is an absolutely dead scale blob!
-					end_event = prevGreyBlob.scaleBlob.End_ScaleBlob()
+					end_event = prevGreyBlob.scaleBlob.End_ScaleBlob(currScale)
 					self.events_bright.append(end_event)
 
 					foundUnambiguous = True
@@ -469,20 +489,16 @@ class Primal_Sketch :
 					
 
 		# Any remaining greyBlobs are ambiguous
+		# It is now a first-come/first-serve situation
 		for currGreyBlob in curr_prev_dn :
-			prevCandidates = list(set(curr_prev_dn[currGreyBlob]) - prevGreyBlobsMatched)
+			prevCandidates = set(curr_prev_dn[currGreyBlob]) - prevGreyBlobsMatched
 			print "Degenerate situation? len(prevCandidates):", len(prevCandidates), \
 			      "  len(origPrevCandidates):", len(curr_prev_dn[currGreyBlob]), \
 			      "  len(support_region):", len(currGreyBlob.support_region)
-			new_blob = ScaleSpace_Blob(self.currIDNum)
-                        new_event = new_blob.Start_ScaleBlob(currGreyBlob, currScale)
 
-                        Mark_ScaleBlob(currGreyBlob, currScale.scaleMarks, self.currIDNum)
-
-                        self.currIDNum += 1
-                        self.scaleBlobs_bright.append(new_blob)
-                        self.events_bright.append(new_event)
-
+			self.SpecialMerge_ScaleBlobs(currGreyBlob, currScale, [aCandidate.scaleBlob for aCandidate in prevCandidates])
+			prevGreyBlobsMatched.update(prevCandidates)
+			currGreyBlobsMatched.add(currGreyBlob)
 
 
 
@@ -514,10 +530,18 @@ class Primal_Sketch :
 
 			newScaleBlobs.append(newBlob)
 
-		# TODO: Probably some more things I was supposed to do...
-		splitEvent.scaleBlobs_below = newScaleBlobs
+		print "split len:", len(newScaleBlobs)
 
+		# TODO: Probably some more things I was supposed to do...
+		splitEvent.scaleblobs_below += newScaleBlobs
+
+		fakeBlob = ws.GreyLevel_Blob([], 0)
+                fakeBlob.scaleBlob = scaleBlob
+                scaleBlob.grey_blobs.append(fakeBlob)
+                scaleBlob.support_regions.append(fakeBlob.support_region)
+                scaleBlob.scale_levels.append(scaleLevel)
 		scaleBlob.events.append(splitEvent)
+		
 
 		self.events_bright.append(splitEvent)
 		self.scaleBlobs_bright += newScaleBlobs
@@ -545,7 +569,49 @@ class Primal_Sketch :
 					 scaleLevel)
 
 		newBlob.events.append(mergeEvent)
+
 		for aScaleBlob in scaleBlobs :
+			fakeBlob = ws.GreyLevel_Blob([], 0)
+                        fakeBlob.scaleBlob = aScaleBlob
+                        aScaleBlob.grey_blobs.append(fakeBlob)
+                        aScaleBlob.support_regions.append(fakeBlob.support_region)
+                        aScaleBlob.scale_levels.append(scaleLevel)
+			aScaleBlob.events.append(mergeEvent)
+					
+		# TODO: end the other scale blobs!
+		self.events_bright.append(mergeEvent)
+		self.scaleBlobs_bright.append(newBlob)
+
+
+	def SpecialMerge_ScaleBlobs(self, greyBlob, scaleLevel, scaleBlobs) :
+		Mark_ScaleBlob(greyBlob, scaleLevel.scaleMarks, self.currIDNum)
+		
+		# Not exactly sure how we are going to represent it correctly,
+		#     so we will get away with just creating a new blob for now
+		newBlob = ScaleSpace_Blob(self.currIDNum)
+		greyBlob.scaleBlob = newBlob
+		newBlob.grey_blobs.append(greyBlob)	
+		newBlob.appearance = scaleLevel
+		newBlob.disappearance = scaleLevel
+		newBlob.support_regions.append(greyBlob.support_region)
+                newBlob.scale_levels.append(scaleLevel)
+
+
+		self.currIDNum += 1
+
+		mergeEvent = Scale_Event(Scale_Event.COMPLEX,
+					 scaleBlobs, [newBlob],
+                                       	 greyBlob.support_region.first_moment(),
+					 scaleLevel)
+
+		newBlob.events.append(mergeEvent)
+
+		for aScaleBlob in scaleBlobs :
+			fakeBlob = ws.GreyLevel_Blob([], 0)
+			fakeBlob.scaleBlob = aScaleBlob
+			aScaleBlob.grey_blobs.append(fakeBlob)
+			aScaleBlob.support_regions.append(fakeBlob.support_region)
+			aScaleBlob.scale_levels.append(scaleLevel)
 			aScaleBlob.events.append(mergeEvent)
 					
 		# TODO: end the other scale blobs!

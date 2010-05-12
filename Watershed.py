@@ -14,6 +14,10 @@ class GreyLevel_Blob :
 	def AddSupport(self, pixels) :
 		self.support_region.AddSupport(pixels)
 
+	def volume(self, image) :
+		# Integrating is easy if the pixels are a unit length apart!
+		return numpy.sum([image[aPixel] for aPixel in self.support_region])
+
 
 
 

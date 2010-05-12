@@ -38,6 +38,38 @@ def Plot_ScaleBlob(ax, scaleBlob) :
         x, y, z = Blob2Coords(scaleBlob)
 	ax.scatter(x, y, c=z, marker='s', s = 2, edgecolors='none', alpha = 0.25, vmin=0, vmax=41)
 
+def Plot_ExtremaPath(ps) :
+	fig = pylab.figure()
+	ax = p3.Axes3D(fig)
+
+	for aScaleBlob in ps.scaleBlobs_bright :
+		ys, xs = zip(*[aRegion.first_moment() for aRegion in aScaleBlob.support_regions if aRegion.area() > 0])
+		scaleCoords = [aScaleLevel.scaleVal for aScaleLevel, aRegion in zip(aScaleBlob.scale_levels,
+										    aScaleBlob.support_regions)
+										if aRegion.area() > 0]
+
+		ax.plot(xs, ys, zs=scaleCoords, color='k')
+
+	# Plot the extrema paths for splits, merges and complex events
+	for aScaleEvent in ps.events_bright :
+		if aScaleEvent.event_type in [ss.Scale_Event.SPLIT,
+					      ss.Scale_Event.MERGE,
+					      ss.Scale_Event.COMPLEX] :
+			# Get all permutations of the paths between the scale blobs above and below the event
+			paths = [(scaleBlobAbove.support_regions[-1].first_moment(),
+				  scaleBlobBelow.support_regions[0].first_moment()) for scaleBlobAbove in aScaleEvent.scaleblobs_above
+										    for scaleBlobBelow in aScaleEvent.scaleblobs_below]
+			scaleCoords = [(scaleBlobAbove.scale_levels[-1].scaleVal,
+					scaleBlobBelow.scale_levels[0].scaleVal) for scaleBlobAbove in aScaleEvent.scaleblobs_above
+										 for scaleBlobBelow in aScaleEvent.scaleblobs_below]
+
+			# Now plot each path
+			for aPath, scales in zip(paths, scaleCoords) :
+				# The fancy zipping is so that the y coordinates go second while the x coordinates go first
+				ax.plot(*zip(*aPath)[::-1], zs=scales, color='r')
+			
+
+
 def Make_ScaleSpace_Plot(ps) :
 	someColors = ['r', 'g', 'm', 'b', 'c', 'k']
 	X, Y = numpy.meshgrid(numpy.arange(1200), numpy.arange(925))
