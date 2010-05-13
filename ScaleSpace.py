@@ -27,12 +27,31 @@ class ScaleSpace_Blob :
 		self.approp_greyblob = None
 		self.atBoundary = None
 
-	def volume(self) :
-		# Not fully correct due to lack of normalization...
-		vols, scaleVals = zip(*[(aGreyBlob.volume(aScaleLevel.image), aScaleLevel.scaleVal) 
-					for aGreyBlob, aScaleLevel in zip(self.grey_blobs, self.scale_levels)])
+	def volume(self, scales) :
+		startIndex = scales.index(self.appearance.scaleVal)
+		endIndex = scales.index(self.disappearance.scaleVal) + 1
 
-		delta_ts = numpy.diff(scaleVals)
+		
+		vols_prel = numpy.array([(aGreyBlob.volume(aScaleLevel.image) - aScaleLevel.meanGreyVol) / aScaleLevel.stdGreyVol
+					 for aGreyBlob, aScaleLevel in zip(self.grey_blobs, self.scale_levels)])
+
+		vols = numpy.where(vols_prel >= 0.0, 1 + vols_prel,
+						     numpy.exp(vols_prel)).tolist()
+
+		assert len(vols) == (endIndex - startIndex)
+
+		if startIndex > 0 :
+			startIndex -= 1
+			vols.insert(0, 0.0)
+
+		if endIndex < len(scales) :
+			endIndex += 1
+			vols.append(0.0)
+
+		# TODO: Figure out a transformation function for the scale values
+		transScales = ScaleTrans(numpy.asarray(scales))
+
+		delta_ts = numpy.diff(transScales[startIndex:endIndex])
 		volume = 0.0
 		# trapezoidal integration
 		for index, delta_t in enumerate(delta_ts) :
@@ -57,18 +76,12 @@ class ScaleSpace_Blob :
 		self.events.append(newEvent)
 		return newEvent
 
-	def End_ScaleBlob(self, scaleLevel) :
+	def End_ScaleBlob(self) :
 		endEvent = Scale_Event(Scale_Event.DESTRUCTION,
 				       [self], [],
 				       self.support_regions[-1].first_moment(),
-				       scaleLevel)
+				       self.scale_levels[-1])
 		self.events.append(endEvent)
-		fakeBlob = ws.GreyLevel_Blob([], 0)
-		fakeBlob.scaleBlob = self
-		
-		self.grey_blobs.append(fakeBlob)
-		self.support_regions.append(fakeBlob.support_region)
-		self.scale_levels.append(scaleLevel)
 		return endEvent
 
 	def Continue_ScaleBlob(self, greyBlob, scaleLevel) :
@@ -158,6 +171,14 @@ class Scale_Level :
 		self.greyBlobs = greyBlobs
 		self.scaleMarks = numpy.empty(image.shape, dtype=int)
 		self.scaleMarks.fill(UNMARKED)
+		
+		if len(greyBlobs) == 0 :
+			self.meanGreyVol = 0.0
+			self.stdGreyVol = 1.0
+		else :
+			vols = [aGreyBlob.volume(image) for aGreyBlob in greyBlobs]
+			self.meanGreyVol = numpy.mean(vols)
+			self.stdGreyVol = numpy.std(vols)
 
 
 
@@ -173,6 +194,11 @@ def RemoveGreyBlob(candidates, greyBlob) :
 			candidates[aGreyBlob].remove(greyBlob)
 	
 
+def ScaleTrans(scaleVal) :
+	return numpy.log(scaleVal + 1.0)
+
+def ScaleTrans_Inverse(value) :
+	return numpy.exp(value) - 1.0
 
 
 class Primal_Sketch :
@@ -183,6 +209,7 @@ class Primal_Sketch :
 		self.events_bright = []
 
 		self.currIDNum = 0
+		self.baseDensity = 0.0
 
 
 	def CreateSketch(self, image, scale_values, refinementLimit = 5) :
@@ -216,9 +243,11 @@ class Primal_Sketch :
 
 				print "At level: ", aScale #, "  Image max:", newImage.max(), "   Image min:", newImage.min()
 			
-				greyblobs, greyMarks = ws.Watershed_Transform(newImage)
-				newScale = Scale_Level(greyblobs, image, greyMarks, aScale)
+				greyBlobs, greyMarks = ws.Watershed_Transform(newImage)
+				newScale = Scale_Level(greyBlobs, image, greyMarks, aScale)
 				self.scale_levels[aScale] = newScale
+				if aScale == 0 :
+					self.baseDensity = len(greyBlobs)
 			else :
 				newScale = self.scale_levels[aScale]
 
@@ -238,8 +267,8 @@ class Primal_Sketch :
 				#   dynamically try for some intermediate scale level, if possible.
 				scale_values.append(aScale)
 
-				refineScale = int(self.ScaleTrans_Inverse((self.ScaleTrans(aScale) + 
-									   self.ScaleTrans(prevScale.scaleVal)) / 2.0))
+				refineScale = int(ScaleTrans_Inverse((ScaleTrans(newScale.scaleVal) + 
+								      ScaleTrans(prevScale.scaleVal)) / 2.0))
 
 				if (refinementCnt >= refinementLimit) or (refineScale in self.scale_levels) or (refineScale in scale_values) :
 					# Either we have done too much refinement or the integer limitation
@@ -270,13 +299,7 @@ class Primal_Sketch :
 #		# Therefore, I won't bother with trying to sort and mess around with linkage issues.
 #		self.scale_levels.append(Scale_Level(greyblobs, image, greyMarks, scaleVal))
 
-	def ScaleTrans(self, scaleVal) :
-		# Just a stub until I truely implement this
-		return scaleVal
 
-	def ScaleTrans_Inverse(self, scaleVal) :
-		# Just a stub until I truely implement this
-		return scaleVal
 
 		
 	def Find_Candidates(self, prevScale, currScale) :
@@ -289,8 +312,8 @@ class Primal_Sketch :
 
 			prevGreyBlobs = [prevScale.greyBlobs[anIndex] for anIndex in greyIndices]
 			curr_prev_dnCandidates[aGreyBlob] = prevGreyBlobs
-			for prevGreyBlob in prevGreyBlobs :
-				prev_curr_dnCandidates.setdefault(prevGreyBlob, []).append(aGreyBlob)
+		#	for prevGreyBlob in prevGreyBlobs :
+		#		prev_curr_dnCandidates.setdefault(prevGreyBlob, []).append(aGreyBlob)
 
 		
 		prev_curr_upCandidates = {}
@@ -302,8 +325,8 @@ class Primal_Sketch :
 
 			currGreyBlobs = [currScale.greyBlobs[anIndex] for anIndex in greyIndices]
 			prev_curr_upCandidates[aGreyBlob] = currGreyBlobs
-			for currGreyBlob in currGreyBlobs :
-				curr_prev_upCandidates.setdefault(currGreyBlob, []).append(aGreyBlob)
+		#	for currGreyBlob in currGreyBlobs :
+		#		curr_prev_upCandidates.setdefault(currGreyBlob, []).append(aGreyBlob)
 
 
 		isAmbiguous = False
@@ -444,7 +467,7 @@ class Primal_Sketch :
 
 				if len(currCandidates) == 0 :
 					# This is an absolutely dead scale blob!
-					end_event = prevGreyBlob.scaleBlob.End_ScaleBlob(currScale)
+					end_event = prevGreyBlob.scaleBlob.End_ScaleBlob()
 					self.events_bright.append(end_event)
 
 					foundUnambiguous = True
@@ -535,11 +558,6 @@ class Primal_Sketch :
 		# TODO: Probably some more things I was supposed to do...
 		splitEvent.scaleblobs_below += newScaleBlobs
 
-		fakeBlob = ws.GreyLevel_Blob([], 0)
-                fakeBlob.scaleBlob = scaleBlob
-                scaleBlob.grey_blobs.append(fakeBlob)
-                scaleBlob.support_regions.append(fakeBlob.support_region)
-                scaleBlob.scale_levels.append(scaleLevel)
 		scaleBlob.events.append(splitEvent)
 		
 
@@ -571,11 +589,6 @@ class Primal_Sketch :
 		newBlob.events.append(mergeEvent)
 
 		for aScaleBlob in scaleBlobs :
-			fakeBlob = ws.GreyLevel_Blob([], 0)
-                        fakeBlob.scaleBlob = aScaleBlob
-                        aScaleBlob.grey_blobs.append(fakeBlob)
-                        aScaleBlob.support_regions.append(fakeBlob.support_region)
-                        aScaleBlob.scale_levels.append(scaleLevel)
 			aScaleBlob.events.append(mergeEvent)
 					
 		# TODO: end the other scale blobs!
@@ -607,11 +620,6 @@ class Primal_Sketch :
 		newBlob.events.append(mergeEvent)
 
 		for aScaleBlob in scaleBlobs :
-			fakeBlob = ws.GreyLevel_Blob([], 0)
-			fakeBlob.scaleBlob = aScaleBlob
-			aScaleBlob.grey_blobs.append(fakeBlob)
-			aScaleBlob.support_regions.append(fakeBlob.support_region)
-			aScaleBlob.scale_levels.append(scaleLevel)
 			aScaleBlob.events.append(mergeEvent)
 					
 		# TODO: end the other scale blobs!
