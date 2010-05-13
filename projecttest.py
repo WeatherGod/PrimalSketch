@@ -1,75 +1,165 @@
-#!/usr/bin/env python
-
 from LoadRastRadar import *
 import ScaleSpace as ss
 import numpy
 
 import pylab
 
-import matplotlib.cm
-import matplotlib.colors
-
-import matplotlib.collections as mcolls
-import matplotlib.axes
 import mpl_toolkits.mplot3d.axes3d as p3
-import mpl_toolkits.mplot3d.art3d as art3d
+
+def foo() :
+
+	scales = [0, 1, 2, 4, 6, 8, 16, 32, 64]
+	ps = ss.Primal_Sketch()
+	Sketch_Radar(ps, "6500KTLX20050514_052255.nc", scales)
+	Create_Images(ps, "KTLX")
+
+	# Need to re-assign scales because the array gets emptied by Sketch_Radar
+	scales = [0, 1, 2, 4, 6, 8, 16, 32, 64]
+	ps = ss.Primal_Sketch()
+	Sketch_Radar(ps, "PAR_20090210_202625_rast.nc", scales)
+	Create_Images(ps, "MPAR")
 
 
 
-def foo(ps) :
-
-	scales = [41, 30, 24, 12, 6, 3, 2, 1, 0]
-
-	radarData = LoadRastRadar("6500KTLX20050514_052255.nc")
+def Sketch_Radar(ps, dataFile, scales) :
+	radarData = LoadRastRadar(dataFile)
 	radarData['vals'] = numpy.nan_to_num(numpy.squeeze(radarData['vals']))
 
-	print "Data min:", radarData['vals'].min(), "   Data max:", radarData['vals'].max()
-
+	# Anchoring to zero and type-casting as integer.
 	imageData = (radarData['vals'] - radarData['vals'].min()).astype(int)
-
-	print "Image max: ", imageData.max()
-
 
 	ps.CreateSketch(imageData, scales)
 
-#blobnorm = matplotlib.colors.BoundaryNorm([0, 5, 21, 41], 9)
+
+
+def Create_Images(ps, namestem) :
+	finalScales = list(ps.scale_levels)
+	finalScales.sort()
+
+	if len(finalScales) == 0 :
+		print "No Scales!"
+		return
+
+	scaleVols = numpy.array([aScaleBlob.volume(finalScales) for aScaleBlob in ps.scaleBlobs_bright])
+
+	# Sort for greatest to least
+	sortIndices = numpy.argsort(scaleVols)[::-1]
+
+
+	#whichBlobs = scaleVols > numpy.mean(scaleVols)
+	whichBlobs = scaleVols > 0
+
+	theBlobs = [ps.scaleBlobs_bright[anIndex] for anIndex in sortIndices[whichBlobs]]
+	print "Plotting the significant blobs"
+	displayRegion = set([])
+	figureIndex = 0
+	fig = pylab.figure()
+	ax = fig.gca()
+	xLims = [0, ps.scale_levels[0].image.shape[1]]
+	yLims = [0, ps.scale_levels[0].image.shape[0]]
+
+	ax.set_title("%s - Significant Blobs #%d" % (namestem, figureIndex)) 
+
+
+	for blobIndex in sortIndices :
+		if len(displayRegion.intersection(ps.scaleBlobs_bright[blobIndex].approp_support)) > 0 :
+
+			ax.set_xlim(xLims)
+			ax.set_ylim(yLims)
+			fig.savefig("SignifBlobs%0.3d_%s.png" % (figureIndex, namestem))
+			pylab.close()
+			figureIndex += 1
+
+			# time for the next figure!
+			fig = pylab.figure()
+			ax = fig.gca()
+			ax.set_title("%s - Significant Blobs #%d" % (namestem, figureIndex))
+			displayRegion = set([])
+
+		Plot_ScaleBlob(ax, ps.scaleBlobs_bright[blobIndex])
+		displayRegion.update(ps.scaleBlobs_bright[blobIndex].approp_support)
+
+	ax.set_xlim(xLims)
+	ax.set_ylim(yLims)
+	fig.savefig("SignifBlobs%0.3d_%s.png" % (figureIndex, namestem))
+	pylab.close()
+
+	print "Plotting all blobs"
+	fig = pylab.figure()
+	ax = fig.gca()
+
+	for aBlob in ps.scaleBlobs_bright :
+		Plot_ScaleBlob(ax, aBlob)
+
+	ax.set_xlim(xLims)
+	ax.set_xlabel("X")
+	ax.set_ylim(yLims)
+	ax.set_ylabel("Y")
+	ax.set_title("%s - All Scale Blobs" % namestem)
+	fig.savefig("AllBlobs_%s.png" % namestem)
+	pylab.close()
+
+	
+	print "Plotting extrema paths"
+	fig = Plot_ExtremaPaths(theBlobs, ps.events_bright)
+	ax = fig.gca()
+	#ax.set_xlim(xLims)
+	#ax.set_ylim(yLims)
+	ax.set_zlabel("Scale Space")
+	ax.set_xlabel("X")
+	ax.set_ylabel("Y")
+	ax.set_title("%s - Extrema Paths" % namestem)
+
+	fig.savefig("ExtremaPaths_%s.png" % namestem)
+	pylab.close()
+
+
+
+	
+
+
 
 def Plot_ScaleBlob(ax, scaleBlob) :
         x, y, z = Blob2Coords(scaleBlob)
-	ax.scatter(x, y, c=z, marker='s', s = 2, edgecolors='none', alpha = 0.25, vmin=0, vmax=41)
+	ax.scatter(x, y, c=z, marker='s', s = 2, edgecolors='none', alpha = 0.05, vmin=0, vmax=64)
 
-def Plot_ExtremaPath(ps) :
+def Plot_ExtremaPaths(scaleBlobs, scaleEvents) :
 	fig = pylab.figure()
 	ax = p3.Axes3D(fig)
 
-	for aScaleBlob in ps.scaleBlobs_bright :
-		ys, xs = zip(*[aRegion.first_moment() for aRegion in aScaleBlob.support_regions if aRegion.area() > 0])
-		scaleCoords = [aScaleLevel.scaleVal for aScaleLevel, aRegion in zip(aScaleBlob.scale_levels,
-										    aScaleBlob.support_regions)
-										if aRegion.area() > 0]
+	scaleBlobs = set(scaleBlobs)
+
+	for aScaleBlob in scaleBlobs :
+		ys, xs = zip(*[aRegion.first_moment() for aRegion in aScaleBlob.support_regions])
+		scaleCoords = [aScaleLevel.scaleVal for aScaleLevel in aScaleBlob.scale_levels]
 
 		ax.plot(xs, ys, zs=scaleCoords, color='k')
 
 	# Plot the extrema paths for splits, merges and complex events
-	for aScaleEvent in ps.events_bright :
+	for aScaleEvent in scaleEvents :
 		if aScaleEvent.event_type in [ss.Scale_Event.SPLIT,
 					      ss.Scale_Event.MERGE,
 					      ss.Scale_Event.COMPLEX] :
-			# Get all permutations of the paths between the scale blobs above and below the event
-			paths = [(scaleBlobAbove.support_regions[-1].first_moment(),
-				  scaleBlobBelow.support_regions[0].first_moment()) for scaleBlobAbove in aScaleEvent.scaleblobs_above
+
+			# Only plot the merge/split/complex if the scale blobs above and below are already plotted.
+			if scaleBlobs.issuperset(aScaleEvent.scaleblobs_above) and scaleBlobs.issuperset(aScaleEvent.scaleblobs_below) :
+				# Get all permutations of the paths between the scale blobs above and below the event
+				paths = [(scaleBlobAbove.support_regions[-1].first_moment(),
+					  scaleBlobBelow.support_regions[0].first_moment()) for scaleBlobAbove in aScaleEvent.scaleblobs_above
 										    for scaleBlobBelow in aScaleEvent.scaleblobs_below]
-			scaleCoords = [(scaleBlobAbove.scale_levels[-1].scaleVal,
-					scaleBlobBelow.scale_levels[0].scaleVal) for scaleBlobAbove in aScaleEvent.scaleblobs_above
+				scaleCoords = [(scaleBlobAbove.scale_levels[-1].scaleVal,
+						scaleBlobBelow.scale_levels[0].scaleVal) for scaleBlobAbove in aScaleEvent.scaleblobs_above
 										 for scaleBlobBelow in aScaleEvent.scaleblobs_below]
 
-			# Now plot each path
-			for aPath, scales in zip(paths, scaleCoords) :
-				# The fancy zipping is so that the y coordinates go second while the x coordinates go first
-				ax.plot(*zip(*aPath)[::-1], zs=scales, color='r')
+				# Now plot each path
+				for aPath, scales in zip(paths, scaleCoords) :
+					# The fancy zipping is so that the y coordinates go second while the x coordinates go first
+					ax.plot(*zip(*aPath)[::-1], zs=scales, color='r')
+
+	return fig
 			
 
-
+"""
 def Make_ScaleSpace_Plot(ps) :
 	someColors = ['r', 'g', 'm', 'b', 'c', 'k']
 	X, Y = numpy.meshgrid(numpy.arange(1200), numpy.arange(925))
@@ -101,7 +191,7 @@ def Make_ScaleSpace_Plot(ps) :
 	#ax.set_ylim((Y.min(), Y.max()))
 	#ax.set_zlim3d((0, 10.0))
 	pylab.show()
-
+"""
 
 def Blob2Coords(blob) :
         x = []
@@ -115,7 +205,7 @@ def Blob2Coords(blob) :
                 z += [scale_lev.scaleVal] * len(xtemp)
 
         return x, y, z
-		
+"""		
 def testwork(blob) :
 	fig = pylab.figure()
 	ax = fig.gca()
@@ -178,3 +268,4 @@ def testwork(blob) :
 	ax.add_collection(collection)
 
 	pylab.show()
+"""

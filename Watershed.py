@@ -10,13 +10,19 @@ class GreyLevel_Blob :
 		self.extremum = Extremum_Region(pixels, value, self)
 		self.saddle = None
 		self.support_region = Support_Region(pixels)
+		self.signifVal = None
 
 	def AddSupport(self, pixels) :
+		# reset the signifVal...
+		self.signifVal = None
 		self.support_region.AddSupport(pixels)
 
 	def volume(self, image) :
-		# Integrating is easy if the pixels are a unit length apart!
-		return numpy.sum([image[aPixel] for aPixel in self.support_region])
+		if self.signifVal is None :
+			# Integrating is easy if the pixels are a unit length apart!
+			self.signifVal = numpy.sum([image[aPixel] for aPixel in self.support_region])
+
+		return self.signifVal
 
 
 

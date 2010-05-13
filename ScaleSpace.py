@@ -25,39 +25,45 @@ class ScaleSpace_Blob :
 
 		self.approp_scalelvl = None
 		self.approp_greyblob = None
-		self.atBoundary = None
+		self.approp_support = None
 
 	def volume(self, scales) :
-		startIndex = scales.index(self.appearance.scaleVal)
-		endIndex = scales.index(self.disappearance.scaleVal) + 1
+		if self.signifVal is None :
+			startIndex = scales.index(self.appearance.scaleVal)
+			endIndex = scales.index(self.disappearance.scaleVal) + 1
 
 		
-		vols_prel = numpy.array([(aGreyBlob.volume(aScaleLevel.image) - aScaleLevel.meanGreyVol) / aScaleLevel.stdGreyVol
-					 for aGreyBlob, aScaleLevel in zip(self.grey_blobs, self.scale_levels)])
+			vols_prel = numpy.array([(aGreyBlob.volume(aScaleLevel.image) - aScaleLevel.meanGreyVol) / aScaleLevel.stdGreyVol
+						 for aGreyBlob, aScaleLevel in zip(self.grey_blobs, self.scale_levels)])
 
-		vols = numpy.where(vols_prel >= 0.0, 1 + vols_prel,
-						     numpy.exp(vols_prel)).tolist()
+			vols = numpy.where(vols_prel >= 0.0, 1 + vols_prel,
+							     numpy.exp(vols_prel)).tolist()
+			appropIndex = numpy.argmax(vols)
+			self.approp_scalelvl = self.scale_levels[appropIndex]
+			self.approp_greyblob = self.grey_blobs[appropIndex]
+			self.approp_support = self.support_regions[appropIndex]
 
-		assert len(vols) == (endIndex - startIndex)
+			assert len(vols) == (endIndex - startIndex)
 
-		if startIndex > 0 :
-			startIndex -= 1
-			vols.insert(0, 0.0)
+			if startIndex > 0 :
+				startIndex -= 1
+				vols.insert(0, 0.0)
 
-		if endIndex < len(scales) :
-			endIndex += 1
-			vols.append(0.0)
+			if endIndex < len(scales) :
+				endIndex += 1
+				vols.append(0.0)
 
-		# TODO: Figure out a transformation function for the scale values
-		transScales = ScaleTrans(numpy.asarray(scales))
+			transScales = ScaleTrans(numpy.asarray(scales))
 
-		delta_ts = numpy.diff(transScales[startIndex:endIndex])
-		volume = 0.0
-		# trapezoidal integration
-		for index, delta_t in enumerate(delta_ts) :
-			volume += ((vols[index] + vols[index + 1]) * delta_t) / 2.0
+			delta_ts = numpy.diff(transScales[startIndex:endIndex])
+			volume = 0.0
+			# trapezoidal integration
+			for index, delta_t in enumerate(delta_ts) :
+				volume += ((vols[index] + vols[index + 1]) * delta_t) / 2.0
 
-		return volume
+			self.signifVal = volume
+
+		return self.signifVal
 
 
 	def Start_ScaleBlob(self, greyBlob, scaleLevel) :
